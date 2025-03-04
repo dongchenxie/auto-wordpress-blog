@@ -11,6 +11,15 @@ interface WordPressPostRequest {
   title?: string;
 }
 
+// WordPress post data interface
+interface WordPressPostData {
+  title: string;
+  content: string;
+  status: string;
+  categories: number[];
+  tags?: string[];
+}
+
 // Error handling function
 const createErrorResponse = (message: string, statusCode: number = 400): APIGatewayProxyResult => {
   return {
@@ -63,15 +72,23 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const wpEndpoint = `${url}/wp-json/wp/v2/posts`;
 
     // Create post via WordPress REST API
+    // Tags need to be provided using post_tag taxonomy, not directly as tags
+    const postData: WordPressPostData = {
+      title,
+      content,
+      status: 'publish', // Publish immediately, use 'draft' to save as draft
+      categories: [], // Add category IDs if needed
+    };
+
+    // If keywords/tags are provided, create them as term names
+    if (keywords && keywords.length > 0) {
+      // Add keywords as tag names (WordPress will create if they don't exist)
+      postData.tags = keywords.map(tag => tag.trim()).filter(Boolean);
+    }
+
     const response = await axios.post(
       wpEndpoint,
-      {
-        title,
-        content,
-        status: 'publish', // Publish immediately, use 'draft' to save as draft
-        categories: [], // Add category IDs if needed
-        tags: keywords, // Use keywords as tags
-      },
+      postData,
       {
         headers: {
           'Content-Type': 'application/json',
