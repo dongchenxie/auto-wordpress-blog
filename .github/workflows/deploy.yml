@@ -31,9 +31,6 @@ jobs:
       - name: Zip package
         run: zip -r dist/your-package.zip dist
 
-      - name: Zip healthchecker
-        run: zip -r healthchecker.zip healthchecker
-
       - name: Deploy to wordpress-post AWS Lambda
         uses: appleboy/lambda-action@v0.1.9
         with:
