@@ -1,0 +1,45 @@
+name: Deploy TypeScript Lambda to AWS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+        
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm run test
+      
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: copy node_modules
+        run: cp -r node_modules dist
+
+      - name: Zip package
+        run: zip -r dist/your-package.zip dist
+
+      - name: Zip healthchecker
+        run: zip -r healthchecker.zip healthchecker
+
+      - name: Deploy to wordpress-post AWS Lambda
+        uses: appleboy/lambda-action@v0.1.9
+        with:
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws_region: us-east-1
+          function_name: wordpress-post
+          zip_file: dist/your-package.zip
+          handler: dist/wordpress-post/index.handler
