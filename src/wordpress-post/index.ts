@@ -109,6 +109,46 @@ let taxonomyCache: TaxonomyCache = {
 const CACHE_TTL = 30 * 60 * 1000;
 
 /**
+ * 规范化分类或标签名称以便于匹配
+ * 处理HTML实体编码和Unicode字符差异
+ * @param name 需要规范化的名称
+ * @returns 规范化后的名称
+ */
+const normalizeTaxonomyName = (name: string): string => {
+  if (!name) return "";
+
+  // 转换为小写
+  let normalized = name.toLowerCase();
+
+  // 解码常见HTML实体
+  normalized = normalized
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&ndash;/g, "-")
+    .replace(/&mdash;/g, "--")
+    .replace(/&hellip;/g, "...");
+
+  // 规范化Unicode特殊字符
+  normalized = normalized
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'") // 智能单引号
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"') // 智能双引号
+    .replace(/\u2026/g, "...") // 省略号
+    .replace(/[\u2013\u2014]/g, "-") // 破折号
+    .replace(/\u00A0/g, " "); // 不间断空格
+
+  // 移除多余空格并清理特殊字符
+  normalized = normalized
+    .replace(/\s+/g, " ") // 多个空格替换为单个
+    .trim(); // 移除前后空格
+
+  return normalized;
+};
+
+/**
  * 根据名称获取分类和标签的ID
  * @param url WordPress站点URL
  * @param auth 身份验证信息
@@ -160,25 +200,33 @@ const getTaxonomyIds = async (
       taxonomyCache.lastUpdate = now; // 更新缓存时间
     }
 
-    // 映射分类名称到ID
+    // 映射分类名称到ID，使用规范化后的名称查询
     result.categoryIds = categoryNames
-      .map((name) => taxonomyCache.categories[name.toLowerCase()])
+      .map((name) => {
+        const normalizedName = normalizeTaxonomyName(name);
+        const id = taxonomyCache.categories[normalizedName];
+        return id;
+      })
       .filter((id) => id !== undefined);
 
     // 记录未找到的分类
     const foundNames = result.categoryIds.length;
     if (foundNames < categoryNames.length) {
+      const missingCategories = categoryNames.filter((name) => {
+        const normalizedName = normalizeTaxonomyName(name);
+        return taxonomyCache.categories[normalizedName] === undefined;
+      });
+
       logger.warn("Some categories not found", {
         found: foundNames,
         total: categoryNames.length,
-        missing: categoryNames.filter(
-          (name) => taxonomyCache.categories[name.toLowerCase()] === undefined
-        ),
+        missing: missingCategories,
+        missingNormalized: missingCategories.map(normalizeTaxonomyName),
       });
     }
   }
 
-  // 单独处理标签数据
+  // 单独处理标签数据 (类似的逻辑)
   if (tagNames && tagNames.length > 0) {
     // 如果缓存过期或标签对象为空，则获取标签数据
     if (isCacheExpired || Object.keys(taxonomyCache.tags).length === 0) {
@@ -190,20 +238,28 @@ const getTaxonomyIds = async (
       taxonomyCache.lastUpdate = now; // 更新缓存时间
     }
 
-    // 映射标签名称到ID
+    // 映射标签名称到ID，使用规范化后的名称查询
     result.tagIds = tagNames
-      .map((name) => taxonomyCache.tags[name.toLowerCase()])
+      .map((name) => {
+        const normalizedName = normalizeTaxonomyName(name);
+        const id = taxonomyCache.tags[normalizedName];
+        return id;
+      })
       .filter((id) => id !== undefined);
 
     // 记录未找到的标签
     const foundNames = result.tagIds.length;
     if (foundNames < tagNames.length) {
+      const missingTags = tagNames.filter((name) => {
+        const normalizedName = normalizeTaxonomyName(name);
+        return taxonomyCache.tags[normalizedName] === undefined;
+      });
+
       logger.warn("Some tags not found", {
         found: foundNames,
         total: tagNames.length,
-        missing: tagNames.filter(
-          (name) => taxonomyCache.tags[name.toLowerCase()] === undefined
-        ),
+        missing: missingTags,
+        missingNormalized: missingTags.map(normalizeTaxonomyName),
       });
     }
   }
@@ -251,9 +307,17 @@ const fetchAllTaxonomies = async (
       // 将获取的数据添加到缓存
       items.forEach((item: any) => {
         if (item.id && item.name) {
+          // 使用规范化的名称作为键
+          const normalizedName = normalizeTaxonomyName(item.name);
+          cacheObj[normalizedName] = item.id;
+
+          // 原始小写名称作为备用键
           cacheObj[item.name.toLowerCase()] = item.id;
-          // 同时缓存slug，提高匹配成功率
+
+          // 缓存规范化的slug
           if (item.slug) {
+            const normalizedSlug = normalizeTaxonomyName(item.slug);
+            cacheObj[normalizedSlug] = item.id;
             cacheObj[item.slug.toLowerCase()] = item.id;
           }
         }
