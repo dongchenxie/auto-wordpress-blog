@@ -105,8 +105,8 @@ let taxonomyCache: TaxonomyCache = {
   lastUpdate: 0,
 };
 
-// 缓存有效期（10分钟，单位毫秒）
-const CACHE_TTL = 10 * 60 * 1000;
+// 缓存有效期（30分钟，单位毫秒）
+const CACHE_TTL = 30 * 60 * 1000;
 
 /**
  * 根据名称获取分类和标签的ID
@@ -127,46 +127,40 @@ const getTaxonomyIds = async (
 
   // 检查缓存是否过期或者站点URL变更
   const now = Date.now();
-  if (
-    now - taxonomyCache.lastUpdate > CACHE_TTL ||
-    taxonomyCache.siteUrl !== url
-  ) {
-    // 缓存过期或站点变更，重置缓存
-    logger.info("Cache expired or site changed, fetching taxonomy data", {
-      cacheAge: (now - taxonomyCache.lastUpdate) / 1000,
-      oldSite: taxonomyCache.siteUrl,
-      newSite: url,
-    });
-    taxonomyCache = {
-      categories: {},
-      tags: {},
-      lastUpdate: now,
-      siteUrl: url,
-    };
+  const isCacheExpired =
+    now - taxonomyCache.lastUpdate > CACHE_TTL || taxonomyCache.siteUrl !== url;
 
-    // 获取分类数据
-    if (categoryNames && categoryNames.length > 0) {
+  // 单独处理分类数据
+  if (categoryNames && categoryNames.length > 0) {
+    // 如果缓存过期或对象为空，则获取分类数据
+    if (isCacheExpired || Object.keys(taxonomyCache.categories).length === 0) {
+      if (isCacheExpired) {
+        // 仅在完全过期时重置整个缓存
+        logger.info("Cache expired or site changed, resetting cache", {
+          cacheAge: (now - taxonomyCache.lastUpdate) / 1000,
+          oldSite: taxonomyCache.siteUrl,
+          newSite: url,
+        });
+        taxonomyCache = {
+          categories: {},
+          tags: {},
+          lastUpdate: now,
+          siteUrl: url,
+        };
+      } else {
+        logger.info("Categories cache empty, fetching categories data");
+      }
+
       await fetchAllTaxonomies(
         url,
         auth,
         "categories",
         taxonomyCache.categories
       );
+      taxonomyCache.lastUpdate = now; // 更新缓存时间
     }
 
-    // 获取标签数据
-    if (tagNames && tagNames.length > 0) {
-      await fetchAllTaxonomies(url, auth, "tags", taxonomyCache.tags);
-    }
-  } else {
-    logger.info("Using cached taxonomy data", {
-      cacheAge: (now - taxonomyCache.lastUpdate) / 1000,
-      siteUrl: url,
-    });
-  }
-
-  // 查找分类ID
-  if (categoryNames && categoryNames.length > 0) {
+    // 映射分类名称到ID
     result.categoryIds = categoryNames
       .map((name) => taxonomyCache.categories[name.toLowerCase()])
       .filter((id) => id !== undefined);
@@ -184,8 +178,19 @@ const getTaxonomyIds = async (
     }
   }
 
-  // 查找标签ID
+  // 单独处理标签数据
   if (tagNames && tagNames.length > 0) {
+    // 如果缓存过期或标签对象为空，则获取标签数据
+    if (isCacheExpired || Object.keys(taxonomyCache.tags).length === 0) {
+      if (!isCacheExpired) {
+        logger.info("Tags cache empty, fetching tags data");
+      }
+
+      await fetchAllTaxonomies(url, auth, "tags", taxonomyCache.tags);
+      taxonomyCache.lastUpdate = now; // 更新缓存时间
+    }
+
+    // 映射标签名称到ID
     result.tagIds = tagNames
       .map((name) => taxonomyCache.tags[name.toLowerCase()])
       .filter((id) => id !== undefined);
