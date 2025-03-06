@@ -10,9 +10,7 @@ export class Logger {
     // 格式化日志信息为结构化JSON
     private formatLogMessage(level: string, message: string, data?: any): string {
       const logEntry = {
-        timestamp: new Date().toISOString(),
         level,
-        requestId: this.requestId,
         context: this.context,
         message,
         data
