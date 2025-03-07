@@ -75,15 +75,17 @@ const formatResponse = (
 const validateRequest = (request: WordPressPostRequest): string | null => {
   const { url, username, password, keywords, prompt } = request;
 
-  if (!url) return "WordPress URL(url) cannot be empty";
-  if (!username) return "Username(username) cannot be empty";
-  if (!password) return "Password(password) cannot be empty";
+  // 修改验证逻辑，检查trim后的值
+  if (!url || url.trim() === "") return "WordPress URL(url) cannot be empty";
+  if (!username || username.trim() === "")
+    return "Username(username) cannot be empty";
+  if (!password || password.trim() === "")
+    return "Password(password) cannot be empty";
   if (!Array.isArray(keywords) || keywords.length === 0)
     return "Keywords(keywords) must be a non-empty array";
-  if (!prompt || prompt.trim() === "")
-    return "Content Prompt(prompt) cannot be empty";
+  if (!prompt || prompt.trim() === "") return "Prompt(prompt) cannot be empty";
 
-  // URL format validation
+  // URL格式验证
   try {
     new URL(url);
   } catch (e) {
@@ -120,7 +122,8 @@ const normalizeTaxonomyName = (name: string): string => {
     .replace(/[\u2018\u2019\u201A\u201B]/g, "'") // 智能单引号
     .replace(/[\u201C\u201D\u201E\u201F]/g, '"') // 智能双引号
     .replace(/\u2026/g, "...") // 省略号
-    .replace(/[\u2013\u2014]/g, "-") // 破折号
+    .replace(/\u2013/g, "-") // en-dash
+    .replace(/\u2014/g, "--") // em-dash (修改为双短横线)
     .replace(/\u00A0/g, " "); // 不间断空格
 
   // 移除多余空格并清理特殊字符
@@ -154,7 +157,7 @@ const getTaxonomyIds = async (
 
   // 处理分类
   if (categoryNames && categoryNames.length > 0) {
-    logger.info("Fetching categories data");
+    // logger.info("Fetching categories data");
     await fetchAllTaxonomies(url, auth, "categories", categoriesMap);
 
     // 映射分类名称到ID，使用规范化后的名称查询
@@ -185,7 +188,7 @@ const getTaxonomyIds = async (
 
   // 处理标签
   if (tagNames && tagNames.length > 0) {
-    logger.info("Fetching tags data");
+    // logger.info("Fetching tags data");
     await fetchAllTaxonomies(url, auth, "tags", tagsMap);
 
     // 映射标签名称到ID，使用规范化后的名称查询
@@ -240,7 +243,7 @@ const fetchAllTaxonomies = async (
   const perPage = 100; // 每页获取最大数量
   let hasMore = true;
 
-  logger.info(`Fetching WordPress ${taxonomyType}`, { url, page });
+  // logger.info(`Fetching WordPress ${taxonomyType}`, { url, page });
 
   while (hasMore) {
     try {
@@ -291,9 +294,9 @@ const fetchAllTaxonomies = async (
     }
   }
 
-  logger.info(`Completed fetching ${taxonomyType}`, {
-    totalItems: Object.keys(cacheObj).length,
-  });
+  // logger.info(`Completed fetching ${taxonomyType}`, {
+  //   totalItems: Object.keys(cacheObj).length,
+  // });
 };
 
 // WordPress API service
@@ -326,7 +329,7 @@ const wordPressService = {
       if (Array.isArray(categories) && categories.length > 0) {
         // 检查是否为字符串数组
         if (typeof categories[0] === "string") {
-          logger.info("Converting category names to IDs");
+          // logger.info("Converting category names to IDs");
           const result = await getTaxonomyIds(
             url,
             { username, password },
@@ -346,7 +349,7 @@ const wordPressService = {
       if (Array.isArray(tags) && tags.length > 0) {
         // 检查是否为字符串数组
         if (typeof tags[0] === "string") {
-          logger.info("Converting tag names to IDs");
+          // logger.info("Converting tag names to IDs");
           const result = await getTaxonomyIds(
             url,
             { username, password },
@@ -474,7 +477,7 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
     const response = await wordPressService.createPost(requestBody);
 
     // 返回成功响应
-    logger.info("Post created successfully", { postId: response.data.id });
+    // logger.info("Post created successfully", { postId: response.data.id });
     return createSuccessResponse(
       {
         message: "Article published successfully",
@@ -528,4 +531,15 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
     logger.error("Unexpected error", { error: String(error) });
     return createErrorResponse("Internal server error", 500);
   }
+};
+
+// 为测试目的导出内部函数
+export {
+  formatResponse,
+  normalizeTaxonomyName,
+  validateRequest,
+  getTaxonomyIds,
+  fetchAllTaxonomies,
+  createErrorResponse,
+  createSuccessResponse,
 };

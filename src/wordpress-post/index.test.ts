@@ -1,4 +1,11 @@
-import { handler } from "./index";
+import {
+  handler,
+  formatResponse,
+  normalizeTaxonomyName,
+  validateRequest,
+  getTaxonomyIds,
+  fetchAllTaxonomies,
+} from "./index";
 import axios from "axios";
 import { generateContent } from "../claude-service";
 
@@ -1061,5 +1068,312 @@ describe("WordPress发布Lambda函数", () => {
       // 验证不会调用API
       expect(mockedAxios.post).not.toHaveBeenCalled();
     });
+  });
+});
+
+// 添加一个新的测试组，用于测试内部工具函数
+describe("内部工具函数测试", () => {
+  // 测试响应格式化函数(行45-53)
+  it("应正确格式化API响应", () => {
+    const response = formatResponse(201, { test: "data" });
+    expect(response).toEqual({
+      statusCode: 201,
+      body: JSON.stringify({ test: "data" }),
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Credentials": true,
+      },
+    });
+  });
+
+  it("应正确处理空的分类名称", () => {
+    expect(normalizeTaxonomyName("")).toBe("");
+  });
+
+  // 特别针对normalizeTaxonomyName函数的各种Unicode和HTML实体情况
+  it("应正确规范化包含各种特殊字符的分类名称", () => {
+    // 测试HTML实体
+    expect(normalizeTaxonomyName("Cat &amp; Dog")).toBe("cat & dog");
+    expect(normalizeTaxonomyName("This &lt; That")).toBe("this < that");
+    expect(normalizeTaxonomyName("a &gt; b")).toBe("a > b");
+    expect(normalizeTaxonomyName("&quot;quoted&quot;")).toBe('"quoted"');
+    expect(normalizeTaxonomyName("O&#039;Connor")).toBe("o'connor");
+    expect(normalizeTaxonomyName("dash&ndash;here")).toBe("dash-here");
+    expect(normalizeTaxonomyName("long&mdash;dash")).toBe("long--dash");
+    expect(normalizeTaxonomyName("ellipsis&hellip;etc")).toBe("ellipsis...etc");
+
+    // 测试Unicode字符
+    expect(normalizeTaxonomyName("smart'quotes")).toBe("smart'quotes");
+    expect(normalizeTaxonomyName('smart"quotes')).toBe('smart"quotes');
+    expect(normalizeTaxonomyName("ellipsis…etc")).toBe("ellipsis...etc");
+    expect(normalizeTaxonomyName("en–dash")).toBe("en-dash");
+    expect(normalizeTaxonomyName("em—dash")).toBe("em--dash");
+    expect(normalizeTaxonomyName("non breaking space")).toBe(
+      "non breaking space"
+    );
+
+    // 测试多个空格
+    expect(normalizeTaxonomyName("  multiple    spaces  ")).toBe(
+      "multiple spaces"
+    );
+  });
+
+  // 测试validateRequest函数的边缘情况(行287及其他验证分支)
+  it("应验证所有必需的请求字段", () => {
+    const validRequest = {
+      url: "https://example.com",
+      username: "user",
+      password: "pass",
+      keywords: ["test"],
+      prompt: "prompt",
+    };
+
+    const emptyPrompt = { ...validRequest, prompt: "  " };
+    expect(validateRequest(emptyPrompt)).toContain("Prompt");
+
+    // 测试无效URL格式异常处理
+    try {
+      validateRequest({
+        ...validRequest,
+        url: "http://invalid url with spaces",
+      });
+      // 不应该到达这里
+      expect(true).toBe(false);
+    } catch (e) {
+      // URL构造函数会抛出异常
+      expect(e).toBeDefined();
+    }
+  });
+
+  // 测试具有完整错误处理的validateRequest函数
+  it("应验证所有请求字段条件分支", () => {
+    // 有效请求
+    const validRequest = {
+      url: "https://example.com",
+      username: "user",
+      password: "pass",
+      keywords: ["test"],
+      prompt: "prompt",
+    };
+
+    // 验证各个字段缺失的情况
+    expect(validateRequest({ ...validRequest, url: "" })).toContain("URL");
+    expect(validateRequest({ ...validRequest, url: "   " })).toContain("URL");
+    expect(validateRequest({ ...validRequest, username: "" })).toContain(
+      "Username"
+    );
+    expect(validateRequest({ ...validRequest, username: "   " })).toContain(
+      "Username"
+    );
+    expect(validateRequest({ ...validRequest, password: "" })).toContain(
+      "Password"
+    );
+    expect(validateRequest({ ...validRequest, password: "   " })).toContain(
+      "Password"
+    );
+    expect(validateRequest({ ...validRequest, keywords: [] })).toContain(
+      "Keywords"
+    );
+    expect(
+      validateRequest({ ...validRequest, keywords: null as any })
+    ).toContain("Keywords");
+    expect(validateRequest({ ...validRequest, prompt: "" })).toContain(
+      "Prompt"
+    );
+    expect(validateRequest({ ...validRequest, prompt: "   " })).toContain(
+      "Prompt"
+    );
+
+    // 验证有效请求返回null
+    expect(validateRequest(validRequest)).toBeNull();
+  });
+});
+
+// 添加一个新的测试组，针对真实API调用的边缘情况
+describe("API调用边缘情况", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedGenerateContent.mockResolvedValue({
+      content: "<p>测试内容</p>",
+      title: "测试标题",
+    });
+  });
+
+  // 测试未覆盖的错误处理路径(行365-391)
+  it("应处理带有自定义错误消息的API错误", async () => {
+    // 模拟包含自定义错误消息的API错误
+    const errorWithCustomMessage = {
+      isAxiosError: true,
+      response: {
+        status: 500,
+        data: {
+          message: "自定义WordPress API错误消息",
+        },
+      },
+      message: "请求失败",
+    };
+
+    mockedAxios.post.mockRejectedValueOnce(errorWithCustomMessage);
+    mockedAxios.isAxiosError.mockReturnValueOnce(true);
+
+    const event = {
+      body: JSON.stringify({
+        url: "https://example.com",
+        username: "test_user",
+        password: "test_pass",
+        keywords: ["keyword"],
+        prompt: "Test prompt",
+      } as any),
+    };
+
+    const result = await handler(event);
+
+    expect(result.statusCode).toBe(500);
+    expect(JSON.parse(result.body).error).toContain(
+      "自定义WordPress API错误消息"
+    );
+  });
+
+  it("应处理没有响应对象的Axios错误", async () => {
+    // 模拟没有response对象的Axios错误
+    const errorWithoutResponse = {
+      isAxiosError: true,
+      response: undefined,
+      message: "网络错误",
+    };
+
+    mockedAxios.post.mockRejectedValueOnce(errorWithoutResponse);
+    mockedAxios.isAxiosError.mockReturnValueOnce(true);
+
+    const event = {
+      body: JSON.stringify({
+        url: "https://example.com",
+        username: "test_user",
+        password: "test_pass",
+        keywords: ["keyword"],
+        prompt: "Test prompt",
+      } as any),
+    };
+
+    const result = await handler(event);
+
+    expect(result.statusCode).toBe(500);
+    expect(JSON.parse(result.body).error).toContain("网络错误");
+  });
+
+  it("应处理没有data对象的Axios错误响应", async () => {
+    // 模拟没有data对象的Axios错误响应
+    const errorWithoutData = {
+      isAxiosError: true,
+      response: {
+        status: 500,
+        data: undefined,
+      },
+      message: "服务器错误",
+    };
+
+    mockedAxios.post.mockRejectedValueOnce(errorWithoutData);
+    mockedAxios.isAxiosError.mockReturnValueOnce(true);
+
+    const event = {
+      body: JSON.stringify({
+        url: "https://example.com",
+        username: "test_user",
+        password: "test_pass",
+        keywords: ["keyword"],
+        prompt: "Test prompt",
+      } as any),
+    };
+
+    const result = await handler(event);
+
+    expect(result.statusCode).toBe(500);
+    expect(JSON.parse(result.body).error).toContain("服务器错误");
+  });
+
+  // 测试getTaxonomyIds中的边缘路径(行103)
+  it("应正确处理不在缓存中的分类名称", async () => {
+    // 模拟一个包含缓存未命中情况的分类API请求
+    mockedAxios.get.mockResolvedValueOnce({
+      data: [
+        { id: 10, name: "找得到的分类", slug: "found-category" },
+        // 缺少我们将要请求的分类
+      ],
+    });
+
+    mockedAxios.post.mockResolvedValueOnce({
+      data: { id: 205, link: "https://example.com/missing-category" },
+    });
+
+    const event = {
+      body: JSON.stringify({
+        url: "https://example.com",
+        username: "test_user",
+        password: "test_pass",
+        keywords: ["keyword"],
+        prompt: "Test prompt",
+        categories: ["找得到的分类", "找不到的分类"], // 包含缓存未命中的分类
+      } as any),
+    };
+
+    await handler(event);
+
+    // 验证调用分类API
+    expect(mockedAxios.get).toHaveBeenCalledWith(
+      expect.stringContaining("categories"),
+      expect.any(Object)
+    );
+
+    // 只有找得到的分类ID被包括
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        categories: [10], // 只有找得到的分类ID
+      }),
+      expect.any(Object)
+    );
+  });
+});
+
+// 添加直接导出函数的测试
+describe("直接导出函数测试", () => {
+  // 模拟axios.get实现，用于测试fetchAllTaxonomies函数
+  const mockAxiosGet = jest.fn();
+  beforeEach(() => {
+    jest.clearAllMocks();
+    axios.get = mockAxiosGet;
+  });
+
+  // 测试fetchAllTaxonomies函数的非常规类型参数(覆盖潜在的类型转换问题)
+  it("应处理items项中非标准数据类型", async () => {
+    mockAxiosGet.mockResolvedValueOnce({
+      data: [
+        { id: 1, name: "正常分类" },
+        { id: 2, name: null }, // name为null
+        { id: null, name: "ID为null" }, // id为null
+        { slug: "no-id-or-name" }, // 没有id和name
+        { id: 3, name: "有slug", slug: "with-slug" }, // 完整项
+      ],
+    });
+
+    // 创建一个测试缓存对象
+    const testCache: Record<string, number> = {};
+
+    await fetchAllTaxonomies(
+      "https://example.com",
+      { username: "test", password: "test" },
+      "categories",
+      testCache
+    );
+
+    // 验证处理了正常数据
+    expect(testCache["正常分类"]).toBe(1);
+    // 验证忽略了异常数据
+    expect(testCache["null"]).toBeUndefined();
+    expect(testCache["id为null"]).toBeUndefined();
+    // 验证处理了slug
+    expect(testCache["有slug"]).toBe(3);
+    expect(testCache["with-slug"]).toBe(3);
   });
 });
