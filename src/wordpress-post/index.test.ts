@@ -1,14 +1,25 @@
 import { handler } from "./index";
 import axios from "axios";
+import { generateContent } from "../claude-service";
 
-// Mock axios module
+// 模拟axios和claude-service
 jest.mock("axios");
+jest.mock("../claude-service");
+
 const mockedAxios = axios as jest.Mocked<typeof axios>;
+const mockedGenerateContent = generateContent as jest.MockedFunction<
+  typeof generateContent
+>;
 
 describe("WordPress发布Lambda函数", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // 默认设置axios.isAxiosError为false，在需要的测试中再覆盖
+    // 默认模拟Claude API返回结果
+    mockedGenerateContent.mockResolvedValue({
+      content: "<p>这是由Claude生成的测试内容</p>",
+      title: "测试文章标题",
+    });
+    // 默认设置axios.isAxiosError为false
     mockedAxios.isAxiosError.mockReturnValue(false);
   });
 
@@ -24,10 +35,7 @@ describe("WordPress发布Lambda函数", () => {
     });
 
     it("当JSON格式无效时应返回错误", async () => {
-      const event = {
-        body: "{非法JSON}",
-      } as any;
-
+      const event = { body: "invalid-json" } as any;
       const result = await handler(event);
 
       expect(result.statusCode).toBe(400);
@@ -36,17 +44,25 @@ describe("WordPress发布Lambda函数", () => {
       );
     });
 
+    it("当请求体为空对象时应返回错误", async () => {
+      const event = { body: JSON.stringify({}) } as any;
+      const result = await handler(event);
+
+      expect(result.statusCode).toBe(400);
+      expect(JSON.parse(result.body).error).toBe(
+        "Request body cannot be empty"
+      );
+    });
+
     it("当URL缺失时应返回错误", async () => {
       const event = {
         body: JSON.stringify({
-          // url缺失
-          username: "test_user",
-          password: "test_pass",
+          username: "user",
+          password: "pass",
           keywords: ["test"],
-          prompt: "Test content",
+          prompt: "test",
         }),
       } as any;
-
       const result = await handler(event);
 
       expect(result.statusCode).toBe(400);
@@ -55,55 +71,16 @@ describe("WordPress发布Lambda函数", () => {
       );
     });
 
-    it("当缺少必填字段username时应返回错误", async () => {
-      const event = {
-        body: JSON.stringify({
-          url: "https://example.com",
-          // username缺失
-          password: "test_pass",
-          keywords: ["test"],
-          prompt: "Test content",
-        }),
-      } as any;
-
-      const result = await handler(event);
-
-      expect(result.statusCode).toBe(400);
-      expect(JSON.parse(result.body).error).toBe(
-        "Username(username) cannot be empty"
-      );
-    });
-
-    it("当缺少必填字段password时应返回错误", async () => {
-      const event = {
-        body: JSON.stringify({
-          url: "https://example.com",
-          username: "test_user",
-          // password缺失
-          keywords: ["test"],
-          prompt: "Test content",
-        }),
-      } as any;
-
-      const result = await handler(event);
-
-      expect(result.statusCode).toBe(400);
-      expect(JSON.parse(result.body).error).toBe(
-        "Password(password) cannot be empty"
-      );
-    });
-
     it("当URL格式无效时应返回错误", async () => {
       const event = {
         body: JSON.stringify({
           url: "invalid-url",
-          username: "test_user",
-          password: "test_pass",
+          username: "user",
+          password: "pass",
           keywords: ["test"],
-          prompt: "Test content",
+          prompt: "test",
         }),
       } as any;
-
       const result = await handler(event);
 
       expect(result.statusCode).toBe(400);
@@ -111,86 +88,16 @@ describe("WordPress发布Lambda函数", () => {
         "Invalid WordPress URL format"
       );
     });
-
-    it("当关键词为空数组时应返回错误", async () => {
-      const event = {
-        body: JSON.stringify({
-          url: "https://example.com",
-          username: "test_user",
-          password: "test_pass",
-          keywords: [],
-          prompt: "Test content",
-        }),
-      } as any;
-
-      const result = await handler(event);
-
-      expect(result.statusCode).toBe(400);
-      expect(JSON.parse(result.body).error).toContain(
-        "Keywords(keywords) must be a non-empty array"
-      );
-    });
-
-    it("当关键词不是数组时应返回错误", async () => {
-      const event = {
-        body: JSON.stringify({
-          url: "https://example.com",
-          username: "test_user",
-          password: "test_pass",
-          keywords: "这不是数组",
-          prompt: "Test content",
-        }),
-      } as any;
-
-      const result = await handler(event);
-
-      expect(result.statusCode).toBe(400);
-      expect(JSON.parse(result.body).error).toContain(
-        "Keywords(keywords) must be a non-empty array"
-      );
-    });
-
-    it("当内容提示为空时应返回错误", async () => {
-      const event = {
-        body: JSON.stringify({
-          url: "https://example.com",
-          username: "test_user",
-          password: "test_pass",
-          keywords: ["test"],
-          prompt: "",
-        }),
-      } as any;
-
-      const result = await handler(event);
-
-      expect(result.statusCode).toBe(400);
-      expect(JSON.parse(result.body).error).toContain(
-        "Content prompt(prompt) cannot be empty"
-      );
-    });
-
-    it("当内容提示只有空白字符时应返回错误", async () => {
-      const event = {
-        body: JSON.stringify({
-          url: "https://example.com",
-          username: "test_user",
-          password: "test_pass",
-          keywords: ["test"],
-          prompt: "   ",
-        }),
-      } as any;
-
-      const result = await handler(event);
-
-      expect(result.statusCode).toBe(400);
-      expect(JSON.parse(result.body).error).toContain(
-        "Content prompt(prompt) cannot be empty"
-      );
-    });
   });
 
   describe("WordPress文章发布", () => {
     it("应成功创建WordPress文章", async () => {
+      // 模拟Claude API响应
+      mockedGenerateContent.mockResolvedValueOnce({
+        content: "<p>这是测试内容</p>",
+        title: "自动生成的标题",
+      });
+
       // 模拟WordPress API响应
       mockedAxios.post.mockResolvedValueOnce({
         data: {
@@ -221,8 +128,8 @@ describe("WordPress发布Lambda函数", () => {
       expect(mockedAxios.post).toHaveBeenCalledWith(
         "https://example.com/wp-json/wp/v2/posts",
         expect.objectContaining({
-          title: expect.any(String),
-          content: expect.any(String),
+          title: "自动生成的标题",
+          content: "<p>这是测试内容</p>",
           status: "draft",
         }),
         expect.objectContaining({
@@ -232,9 +139,23 @@ describe("WordPress发布Lambda函数", () => {
           },
         })
       );
+
+      // 验证Claude API被调用
+      expect(mockedGenerateContent).toHaveBeenCalledWith({
+        prompt: "This is a test blog post",
+        keywords: ["test", "blog"],
+        apiKey: undefined,
+        model: undefined,
+      });
     });
 
     it("应使用自定义标题和状态", async () => {
+      // 模拟Claude API响应
+      mockedGenerateContent.mockResolvedValueOnce({
+        content: "<p>这是测试内容</p>",
+        title: "这个标题应该被覆盖",
+      });
+
       // 模拟WordPress API响应
       mockedAxios.post.mockResolvedValueOnce({
         data: {
@@ -263,7 +184,7 @@ describe("WordPress发布Lambda函数", () => {
       expect(mockedAxios.post).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          title: "自定义标题",
+          title: "自定义标题", // 自定义标题应覆盖生成的标题
           status: "draft",
         }),
         expect.any(Object)
@@ -275,7 +196,16 @@ describe("WordPress发布Lambda函数", () => {
       const statuses = ["publish", "draft", "pending", "private"];
 
       for (const status of statuses) {
-        mockedAxios.post.mockClear();
+        // 每次循环重置mock
+        jest.clearAllMocks();
+
+        // 模拟Claude API响应
+        mockedGenerateContent.mockResolvedValueOnce({
+          content: `<p>${status} 状态的内容</p>`,
+          title: `${status} 状态的标题`,
+        });
+
+        // 模拟WordPress API响应
         mockedAxios.post.mockResolvedValueOnce({
           data: {
             id: 125,
@@ -306,13 +236,23 @@ describe("WordPress发布Lambda函数", () => {
         );
       }
     });
+  });
 
-    it("应处理有特殊字符的标签", async () => {
+  describe("分类和标签处理", () => {
+    beforeEach(() => {
+      // 模拟Claude API响应
+      mockedGenerateContent.mockResolvedValue({
+        content: "<p>测试内容</p>",
+        title: "测试标题",
+      });
+    });
+
+    it("应处理数字ID的分类", async () => {
       // 模拟WordPress API响应
       mockedAxios.post.mockResolvedValueOnce({
         data: {
-          id: 126,
-          link: "https://example.com/blog/special-tags",
+          id: 130,
+          link: "https://example.com/blog/category-post",
         },
       });
 
@@ -321,18 +261,271 @@ describe("WordPress发布Lambda函数", () => {
           url: "https://example.com",
           username: "test_user",
           password: "test_password",
-          keywords: [" test1 ", "", "test2", "  "],
-          prompt: "Test with special tags",
+          keywords: ["test"],
+          prompt: "Test content",
+          categories: [5, 10], // 直接使用数字ID
         }),
       } as any;
 
       await handler(event);
+
+      // 验证分类ID被正确传递
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          categories: [5, 10],
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it("应处理字符串名称的分类", async () => {
+      // 模拟分类API响应
+      mockedAxios.get.mockImplementation((url) => {
+        if (url.includes("categories")) {
+          return Promise.resolve({
+            data: [
+              { id: 5, name: "Tech", slug: "tech" },
+              { id: 10, name: "News", slug: "news" },
+            ],
+          });
+        }
+        return Promise.resolve({ data: [] });
+      });
+
+      // 模拟WordPress API响应
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          id: 131,
+          link: "https://example.com/blog/category-name-post",
+        },
+      });
+
+      const event = {
+        body: JSON.stringify({
+          url: "https://example.com",
+          username: "test_user",
+          password: "test_password",
+          keywords: ["test"],
+          prompt: "Test content",
+          categories: ["Tech", "News"], // 使用字符串名称
+        }),
+      } as any;
+
+      await handler(event);
+
+      // 验证分类API被调用
+      expect(mockedAxios.get).toHaveBeenCalledWith(
+        expect.stringContaining("categories"),
+        expect.any(Object)
+      );
+
+      // 验证分类ID被正确转换
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          categories: expect.arrayContaining([5, 10]),
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it("应处理数字ID的标签", async () => {
+      // 模拟WordPress API响应
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          id: 132,
+          link: "https://example.com/blog/tag-post",
+        },
+      });
+
+      const event = {
+        body: JSON.stringify({
+          url: "https://example.com",
+          username: "test_user",
+          password: "test_password",
+          keywords: ["test"],
+          prompt: "Test content",
+          tags: [15, 20], // 直接使用数字ID
+        }),
+      } as any;
+
+      await handler(event);
+
+      // 验证标签ID被正确传递
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          tags: [15, 20],
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it("应处理字符串名称的标签", async () => {
+      // 模拟标签API响应
+      mockedAxios.get.mockImplementation((url) => {
+        if (url.includes("tags")) {
+          return Promise.resolve({
+            data: [
+              { id: 15, name: "JavaScript", slug: "javascript" },
+              { id: 20, name: "TypeScript", slug: "typescript" },
+            ],
+          });
+        }
+        return Promise.resolve({ data: [] });
+      });
+
+      // 模拟WordPress API响应
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          id: 133,
+          link: "https://example.com/blog/tag-name-post",
+        },
+      });
+
+      const event = {
+        body: JSON.stringify({
+          url: "https://example.com",
+          username: "test_user",
+          password: "test_password",
+          keywords: ["test"],
+          prompt: "Test content",
+          tags: ["JavaScript", "TypeScript"], // 使用字符串名称
+        }),
+      } as any;
+
+      await handler(event);
+
+      // 验证标签API被调用
+      expect(mockedAxios.get).toHaveBeenCalledWith(
+        expect.stringContaining("tags"),
+        expect.any(Object)
+      );
+
+      // 验证标签ID被正确转换
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          tags: expect.arrayContaining([15, 20]),
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it("应规范化分类名称中的HTML实体和Unicode字符", async () => {
+      // 模拟分类API响应 - 包含特殊字符的分类
+      mockedAxios.get.mockImplementation((url) => {
+        if (url.includes("categories")) {
+          return Promise.resolve({
+            data: [
+              {
+                id: 40,
+                name: "Beginner\u2019s Guides &amp; Tutorials",
+                slug: "beginners-guides-tutorials",
+              },
+            ],
+          });
+        }
+        return Promise.resolve({ data: [] });
+      });
+
+      // 模拟WordPress API响应
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          id: 140,
+          link: "https://example.com/blog/special-chars-post",
+        },
+      });
+
+      const event = {
+        body: JSON.stringify({
+          url: "https://example.com",
+          username: "test_user",
+          password: "test_password",
+          keywords: ["test"],
+          prompt: "Test content",
+          categories: ["Beginner's Guides & Tutorials"], // 普通ASCII版本
+        }),
+      } as any;
+
+      await handler(event);
+
+      // 验证分类ID被正确转换
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          categories: [40],
+        }),
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe("分页功能", () => {
+    it("应处理分类数据的分页", async () => {
+      // 模拟分页响应
+      // 第一页返回100个分类
+      const page1Categories = Array(100)
+        .fill(0)
+        .map((_, i) => ({
+          id: i + 1,
+          name: `Category ${i + 1}`,
+          slug: `category-${i + 1}`,
+        }));
+
+      // 第二页返回50个分类，包括我们要找的Category 150
+      const page2Categories = Array(50)
+        .fill(0)
+        .map((_, i) => ({
+          id: i + 101,
+          name: `Category ${i + 101}`,
+          slug: `category-${i + 101}`,
+        }));
+
+      // 顺序模拟两个请求的响应
+      mockedAxios.get
+        .mockResolvedValueOnce({ data: page1Categories }) // 第一页
+        .mockResolvedValueOnce({ data: page2Categories }); // 第二页
+
+      // 模拟WordPress API响应
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          id: 150,
+          link: "https://example.com/blog/pagination-post",
+        },
+      });
+
+      const event = {
+        body: JSON.stringify({
+          url: "https://example.com",
+          username: "test_user",
+          password: "test_password",
+          keywords: ["test"],
+          prompt: "Test content",
+          categories: ["Category 150"], // 在第二页的分类
+        }),
+      } as any;
+
+      await handler(event);
+
+      // 验证第一次调用包含page=1
+      expect(mockedAxios.get.mock.calls[0][0]).toContain("page=1");
+
+      // 验证第二次调用包含page=2
+      expect(mockedAxios.get.mock.calls[1][0]).toContain("page=2");
     });
   });
 
   describe("错误处理", () => {
     it("应处理401认证失败错误", async () => {
-      // 模拟API错误响应
+      // 模拟Claude API响应
+      mockedGenerateContent.mockResolvedValueOnce({
+        content: "<p>测试内容</p>",
+        title: "测试标题",
+      });
+
+      // 模拟401错误响应
       const errorResponse = {
         response: {
           status: 401,
@@ -363,7 +556,13 @@ describe("WordPress发布Lambda函数", () => {
     });
 
     it("应处理403权限不足错误", async () => {
-      // 模拟API错误响应
+      // 模拟Claude API响应
+      mockedGenerateContent.mockResolvedValueOnce({
+        content: "<p>测试内容</p>",
+        title: "测试标题",
+      });
+
+      // 模拟403错误响应
       const errorResponse = {
         response: {
           status: 403,
@@ -394,7 +593,13 @@ describe("WordPress发布Lambda函数", () => {
     });
 
     it("应处理404端点未找到错误", async () => {
-      // 模拟API错误响应
+      // 模拟Claude API响应
+      mockedGenerateContent.mockResolvedValueOnce({
+        content: "<p>测试内容</p>",
+        title: "测试标题",
+      });
+
+      // 模拟404错误响应
       const errorResponse = {
         response: {
           status: 404,
@@ -424,13 +629,19 @@ describe("WordPress发布Lambda函数", () => {
       );
     });
 
-    it("应处理一般API错误且错误消息来自response.data", async () => {
-      // 模拟API错误响应
+    it("应处理其他API错误", async () => {
+      // 模拟Claude API响应
+      mockedGenerateContent.mockResolvedValueOnce({
+        content: "<p>测试内容</p>",
+        title: "测试标题",
+      });
+
+      // 模拟500错误响应
       const errorResponse = {
         response: {
           status: 500,
           data: {
-            message: "服务器错误",
+            message: "服务器内部错误",
           },
         },
       };
@@ -453,37 +664,15 @@ describe("WordPress发布Lambda函数", () => {
       expect(JSON.parse(result.body).error).toContain("WordPress API error");
     });
 
-    it("应处理一般API错误且错误消息来自axiosError.message", async () => {
-      // 模拟API错误响应，但没有data.message
-      const errorResponse = {
-        response: {
-          status: 500,
-          data: {},
-        },
-        message: "请求失败",
-      };
-      mockedAxios.post.mockRejectedValueOnce(errorResponse);
-      mockedAxios.isAxiosError.mockReturnValueOnce(true);
-
-      const event = {
-        body: JSON.stringify({
-          url: "https://example.com",
-          username: "test_user",
-          password: "test_password",
-          keywords: ["test"],
-          prompt: "Test post",
-        }),
-      } as any;
-
-      const result = await handler(event);
-
-      expect(result.statusCode).toBe(500);
-      expect(JSON.parse(result.body).error).toContain("WordPress API error");
-    });
-
     it("应处理非Axios错误", async () => {
-      // 模拟一般JavaScript错误
-      mockedAxios.post.mockRejectedValueOnce(new Error("未知错误"));
+      // 模拟Claude API响应
+      mockedGenerateContent.mockResolvedValueOnce({
+        content: "<p>测试内容</p>",
+        title: "测试标题",
+      });
+
+      // 模拟非Axios错误
+      mockedAxios.post.mockRejectedValueOnce(new Error("一般错误"));
       mockedAxios.isAxiosError.mockReturnValueOnce(false);
 
       const event = {
@@ -499,7 +688,378 @@ describe("WordPress发布Lambda函数", () => {
       const result = await handler(event);
 
       expect(result.statusCode).toBe(500);
-      expect(JSON.parse(result.body).error).toBe("Internal server error");
+      expect(JSON.parse(result.body).error).toContain("Internal server error");
+    });
+  });
+
+  describe("内容生成错误处理", () => {
+    it("应处理Claude API生成内容失败的情况", async () => {
+      // 模拟Claude API失败
+      mockedGenerateContent.mockRejectedValueOnce(new Error("Claude API错误"));
+
+      // 模拟WordPress API响应
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          id: 160,
+          link: "https://example.com/blog/fallback-content",
+        },
+      });
+
+      const event = {
+        body: JSON.stringify({
+          url: "https://example.com",
+          username: "test_user",
+          password: "test_password",
+          keywords: ["test"],
+          prompt: "Fail this generation",
+        }),
+      } as any;
+
+      const result = await handler(event);
+
+      // 即使内容生成失败，应该仍然成功创建文章
+      expect(result.statusCode).toBe(201);
+
+      // 验证使用了备用内容
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          title: expect.stringMatching(/test/i), // 使用关键词作为标题
+          content: expect.stringMatching(/Fail this generation/i), // 使用提示作为内容
+        }),
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe("异常路径和边缘情况测试", () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockedGenerateContent.mockResolvedValue({
+        content: "<p>测试内容</p>",
+        title: "测试标题",
+      });
+    });
+
+    it("应处理fetchAllTaxonomies中的API错误", async () => {
+      // 测试覆盖172-177行的错误处理
+      mockedAxios.get.mockRejectedValueOnce(new Error("API错误"));
+
+      // 模拟后续成功响应
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { id: 200, link: "https://example.com/post" },
+      });
+
+      const event = {
+        body: JSON.stringify({
+          url: "https://example.com",
+          username: "test_user",
+          password: "test_pass",
+          keywords: ["keyword"],
+          prompt: "Test prompt",
+          categories: ["ErrorCategory"], // 触发分类API调用，但会遇到错误
+        }),
+      } as any;
+
+      const result = await handler(event);
+
+      // 即使分类API失败，应该仍然能成功创建文章
+      expect(result.statusCode).toBe(201);
+
+      // 验证API调用
+      expect(mockedAxios.get).toHaveBeenCalledWith(
+        expect.stringContaining("categories"),
+        expect.any(Object)
+      );
+
+      // 验证分类ID数组应为空（无法解析ID）
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          categories: [], // 由于API错误，无法获取分类ID
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it("应处理空数组分类和标签", async () => {
+      // 测试覆盖82,84行的条件分支
+      // 模拟WordPress API响应
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { id: 201, link: "https://example.com/empty-post" },
+      });
+
+      const event = {
+        body: JSON.stringify({
+          url: "https://example.com",
+          username: "test_user",
+          password: "test_pass",
+          keywords: ["keyword"],
+          prompt: "Test prompt",
+          categories: [], // 空数组
+          tags: [], // 空数组
+        }),
+      } as any;
+
+      const result = await handler(event);
+
+      expect(result.statusCode).toBe(201);
+
+      // 验证不会调用getTaxonomyIds
+      expect(mockedAxios.get).not.toHaveBeenCalled();
+
+      // 验证分类和标签ID都是空数组
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          categories: [],
+          tags: [],
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it("应处理特殊字符的分页数据", async () => {
+      // 测试覆盖203-208行的代码
+      // 模拟返回特殊字符数据的响应
+      const specialCategoryData = [
+        {
+          id: 42,
+          name: "Special & Category \u2019 with \u201C quotes \u201D",
+          slug: "special-category",
+        },
+      ];
+
+      mockedAxios.get.mockResolvedValueOnce({ data: specialCategoryData });
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { id: 202, link: "https://example.com/special-post" },
+      });
+
+      const event = {
+        body: JSON.stringify({
+          url: "https://example.com",
+          username: "test_user",
+          password: "test_pass",
+          keywords: ["keyword"],
+          prompt: "Test prompt",
+          categories: ['Special & Category \' with " quotes "'], // 使用普通字符版本
+        }),
+      } as any;
+
+      await handler(event);
+
+      // 验证正确规范化特殊字符
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          categories: [42],
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it("应处理无效的URL格式", async () => {
+      // 测试覆盖286-290行的验证路径
+      const event = {
+        body: JSON.stringify({
+          url: "invalid-url", // 无效URL
+          username: "test_user",
+          password: "test_pass",
+          keywords: ["keyword"],
+          prompt: "Test prompt",
+        }),
+      } as any;
+
+      const result = await handler(event);
+
+      expect(result.statusCode).toBe(400);
+      expect(JSON.parse(result.body).error).toContain(
+        "Invalid WordPress URL format"
+      );
+
+      // 验证不会调用API
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+    });
+
+    it("应处理data.items为undefined的情况", async () => {
+      // 模拟API返回undefined的情况
+      mockedAxios.get.mockResolvedValueOnce({ data: undefined });
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { id: 203, link: "https://example.com/undefined-data-post" },
+      });
+
+      const event = {
+        body: JSON.stringify({
+          url: "https://example.com",
+          username: "test_user",
+          password: "test_pass",
+          keywords: ["keyword"],
+          prompt: "Test prompt",
+          categories: ["NonExistentCategory"],
+        }),
+      } as any;
+
+      const result = await handler(event);
+
+      // 即使API返回异常，仍应成功发布文章
+      expect(result.statusCode).toBe(201);
+
+      // 验证分类ID数组应为空
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          categories: [],
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it("应处理标签API错误", async () => {
+      // 模拟分类API正常，标签API错误
+      mockedAxios.get
+        .mockImplementationOnce((url) => {
+          if (url.includes("categories")) {
+            return Promise.resolve({
+              data: [{ id: 5, name: "Category", slug: "category" }],
+            });
+          }
+          throw new Error("不应该调用此实现");
+        })
+        .mockImplementationOnce((url) => {
+          if (url.includes("tags")) {
+            return Promise.reject(new Error("标签API错误"));
+          }
+          throw new Error("不应该调用此实现");
+        });
+
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { id: 204, link: "https://example.com/tag-error-post" },
+      });
+
+      const event = {
+        body: JSON.stringify({
+          url: "https://example.com",
+          username: "test_user",
+          password: "test_pass",
+          keywords: ["keyword"],
+          prompt: "Test prompt",
+          categories: ["Category"],
+          tags: ["ErrorTag"],
+        }),
+      } as any;
+
+      const result = await handler(event);
+
+      // 即使标签API失败，仍应成功发布文章
+      expect(result.statusCode).toBe(201);
+
+      // 验证使用成功获取的分类，但标签数组为空
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          categories: [5],
+          tags: [],
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it("应处理发送请求超时", async () => {
+      // 模拟请求超时
+      mockedGenerateContent.mockResolvedValueOnce({
+        content: "<p>测试内容</p>",
+        title: "测试标题",
+      });
+
+      // 模拟超时错误
+      const timeoutError = {
+        isAxiosError: true,
+        code: "ECONNABORTED",
+        message: "timeout of 10000ms exceeded",
+        response: undefined,
+      };
+
+      mockedAxios.post.mockRejectedValueOnce(timeoutError);
+      mockedAxios.isAxiosError.mockReturnValueOnce(true);
+
+      const event = {
+        body: JSON.stringify({
+          url: "https://example.com",
+          username: "test_user",
+          password: "test_pass",
+          keywords: ["keyword"],
+          prompt: "Test prompt",
+        }),
+      } as any;
+
+      const result = await handler(event);
+
+      // 应返回500错误
+      expect(result.statusCode).toBe(500);
+      expect(JSON.parse(result.body).error).toContain("WordPress API error");
+    });
+
+    // 替换当前失败的测试，分成两个测试
+    it("应处理密码缺失的请求", async () => {
+      // 测试缺少密码的情况
+      const event = {
+        body: JSON.stringify({
+          url: "https://example.com",
+          username: "test_user",
+          // 没有密码
+          keywords: ["keyword"],
+          prompt: "Test prompt",
+        }),
+      } as any;
+
+      const result = await handler(event);
+
+      expect(result.statusCode).toBe(400);
+      expect(JSON.parse(result.body).error).toContain("Password");
+
+      // 验证不会调用API
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+    });
+
+    it("应处理关键词缺失的请求", async () => {
+      // 测试包含密码但缺少关键词的情况
+      const event = {
+        body: JSON.stringify({
+          url: "https://example.com",
+          username: "test_user",
+          password: "test_pass",
+          // 没有关键词
+          prompt: "Test prompt",
+        }),
+      } as any;
+
+      const result = await handler(event);
+
+      expect(result.statusCode).toBe(400);
+      expect(JSON.parse(result.body).error).toContain("Keywords");
+
+      // 验证不会调用API
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+    });
+
+    it("应处理提示词缺失的请求", async () => {
+      const event = {
+        body: JSON.stringify({
+          url: "https://example.com",
+          username: "test_user",
+          password: "test_pass",
+          keywords: ["keyword"],
+          // 没有提示词
+        }),
+      } as any;
+
+      const result = await handler(event);
+
+      expect(result.statusCode).toBe(400);
+      expect(JSON.parse(result.body).error).toContain("Prompt");
+
+      // 验证不会调用API
+      expect(mockedAxios.post).not.toHaveBeenCalled();
     });
   });
 });

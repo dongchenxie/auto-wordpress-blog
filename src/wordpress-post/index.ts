@@ -1,6 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import axios, { AxiosRequestConfig, AxiosError } from "axios";
 import { createLogger } from "./logger";
+import { generateContent } from "../claude-service";
 
 // Request body structure definition
 interface WordPressPostRequest {
@@ -16,6 +17,8 @@ interface WordPressPostRequest {
   excerpt?: string;
   meta?: Record<string, any>;
   status?: "publish" | "draft" | "pending" | "private";
+  apiKey?: string;
+  model?: string;
 }
 
 // WordPress post data interface
@@ -78,7 +81,7 @@ const validateRequest = (request: WordPressPostRequest): string | null => {
   if (!Array.isArray(keywords) || keywords.length === 0)
     return "Keywords(keywords) must be a non-empty array";
   if (!prompt || prompt.trim() === "")
-    return "Content prompt(prompt) cannot be empty";
+    return "Content Prompt(prompt) cannot be empty";
 
   // URL format validation
   try {
@@ -90,24 +93,6 @@ const validateRequest = (request: WordPressPostRequest): string | null => {
   return null;
 };
 
-// 缓存WordPress分类和标签数据
-interface TaxonomyCache {
-  categories: Record<string, number>; // 分类名称到ID的映射
-  tags: Record<string, number>; // 标签名称到ID的映射
-  lastUpdate: number; // 上次更新时间戳
-  siteUrl?: string; // 缓存对应的站点URL
-}
-
-// 初始化缓存
-let taxonomyCache: TaxonomyCache = {
-  categories: {},
-  tags: {},
-  lastUpdate: 0,
-};
-
-// 缓存有效期（30分钟，单位毫秒）
-const CACHE_TTL = 30 * 60 * 1000;
-
 /**
  * 规范化分类或标签名称以便于匹配
  * 处理HTML实体编码和Unicode字符差异
@@ -116,8 +101,6 @@ const CACHE_TTL = 30 * 60 * 1000;
  */
 const normalizeTaxonomyName = (name: string): string => {
   if (!name) return "";
-
-  // 转换为小写
   let normalized = name.toLowerCase();
 
   // 解码常见HTML实体
@@ -165,46 +148,20 @@ const getTaxonomyIds = async (
   const logger = createLogger("wordpress-taxonomy");
   const result = { categoryIds: [] as number[], tagIds: [] as number[] };
 
-  // 检查缓存是否过期或者站点URL变更
-  const now = Date.now();
-  const isCacheExpired =
-    now - taxonomyCache.lastUpdate > CACHE_TTL || taxonomyCache.siteUrl !== url;
+  // 临时存储分类数据的对象
+  const categoriesMap: Record<string, number> = {};
+  const tagsMap: Record<string, number> = {};
 
-  // 单独处理分类数据
+  // 处理分类
   if (categoryNames && categoryNames.length > 0) {
-    // 如果缓存过期或对象为空，则获取分类数据
-    if (isCacheExpired || Object.keys(taxonomyCache.categories).length === 0) {
-      if (isCacheExpired) {
-        // 仅在完全过期时重置整个缓存
-        logger.info("Cache expired or site changed, resetting cache", {
-          cacheAge: (now - taxonomyCache.lastUpdate) / 1000,
-          oldSite: taxonomyCache.siteUrl,
-          newSite: url,
-        });
-        taxonomyCache = {
-          categories: {},
-          tags: {},
-          lastUpdate: now,
-          siteUrl: url,
-        };
-      } else {
-        logger.info("Categories cache empty, fetching categories data");
-      }
-
-      await fetchAllTaxonomies(
-        url,
-        auth,
-        "categories",
-        taxonomyCache.categories
-      );
-      taxonomyCache.lastUpdate = now; // 更新缓存时间
-    }
+    logger.info("Fetching categories data");
+    await fetchAllTaxonomies(url, auth, "categories", categoriesMap);
 
     // 映射分类名称到ID，使用规范化后的名称查询
     result.categoryIds = categoryNames
       .map((name) => {
         const normalizedName = normalizeTaxonomyName(name);
-        const id = taxonomyCache.categories[normalizedName];
+        const id = categoriesMap[normalizedName];
         return id;
       })
       .filter((id) => id !== undefined);
@@ -214,7 +171,7 @@ const getTaxonomyIds = async (
     if (foundNames < categoryNames.length) {
       const missingCategories = categoryNames.filter((name) => {
         const normalizedName = normalizeTaxonomyName(name);
-        return taxonomyCache.categories[normalizedName] === undefined;
+        return categoriesMap[normalizedName] === undefined;
       });
 
       logger.warn("Some categories not found", {
@@ -226,23 +183,16 @@ const getTaxonomyIds = async (
     }
   }
 
-  // 单独处理标签数据 (类似的逻辑)
+  // 处理标签
   if (tagNames && tagNames.length > 0) {
-    // 如果缓存过期或标签对象为空，则获取标签数据
-    if (isCacheExpired || Object.keys(taxonomyCache.tags).length === 0) {
-      if (!isCacheExpired) {
-        logger.info("Tags cache empty, fetching tags data");
-      }
-
-      await fetchAllTaxonomies(url, auth, "tags", taxonomyCache.tags);
-      taxonomyCache.lastUpdate = now; // 更新缓存时间
-    }
+    logger.info("Fetching tags data");
+    await fetchAllTaxonomies(url, auth, "tags", tagsMap);
 
     // 映射标签名称到ID，使用规范化后的名称查询
     result.tagIds = tagNames
       .map((name) => {
         const normalizedName = normalizeTaxonomyName(name);
-        const id = taxonomyCache.tags[normalizedName];
+        const id = tagsMap[normalizedName];
         return id;
       })
       .filter((id) => id !== undefined);
@@ -252,7 +202,7 @@ const getTaxonomyIds = async (
     if (foundNames < tagNames.length) {
       const missingTags = tagNames.filter((name) => {
         const normalizedName = normalizeTaxonomyName(name);
-        return taxonomyCache.tags[normalizedName] === undefined;
+        return tagsMap[normalizedName] === undefined;
       });
 
       logger.warn("Some tags not found", {
@@ -272,7 +222,7 @@ const getTaxonomyIds = async (
  * @param url WordPress站点URL
  * @param auth 身份验证信息
  * @param taxonomyType 分类类型（categories或tags）
- * @param cacheObj 缓存对象
+ * @param cacheObj 临时存储对象
  */
 const fetchAllTaxonomies = async (
   url: string,
@@ -323,10 +273,6 @@ const fetchAllTaxonomies = async (
         }
       });
 
-      logger.info(`Fetched ${items.length} ${taxonomyType} from page ${page}`, {
-        totalCached: Object.keys(cacheObj).length,
-      });
-
       // 如果获取的数据少于perPage，表示已经是最后一页
       if (items.length < perPage) {
         hasMore = false;
@@ -365,6 +311,8 @@ const wordPressService = {
       excerpt,
       meta,
       status = "draft", // 默认为草稿
+      apiKey,
+      model,
     } = request;
 
     const logger = createLogger("wordpress-post");
@@ -413,19 +361,35 @@ const wordPressService = {
       }
     }
 
-    // 处理关键词为标签 (tags_input功能)
+    // 处理关键词和prompt
     const tagsInput = keywords?.map((tag) => tag.trim()).filter(Boolean) || [];
 
-    // Generate content
-    const postContent = `
-      <p>${prompt}</p>
-      <p>input_Keywords: ${keywords.join(", ")}</p>
-    `;
+    // Generate content with error handling
+    let generatedContent;
+    try {
+      generatedContent = await generateContent({
+        prompt,
+        keywords: tagsInput,
+        apiKey,
+        model,
+      });
+    } catch (error) {
+      // 当内容生成失败时使用备用内容
+      logger.warn("Content generation failed, using fallback content", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      // 创建备用内容
+      generatedContent = {
+        title: `About: ${keywords.join(", ")}`,
+        content: `<p>${prompt}</p><p>Keywords: ${keywords.join(", ")}</p>`,
+      };
+    }
 
     // Build request data
     const postData: WordPressPostData = {
-      title: title || `About: ${keywords.join(", ")}`,
-      content: postContent,
+      title: title || generatedContent.title || `About: ${keywords.join(", ")}`,
+      content: generatedContent.content,
       status,
       categories: categoryIds,
       tags: tagIds,
