@@ -82,9 +82,6 @@ Do not include any disclaimers or mentions that this was created by AI.`;
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt },
       ],
-      // 可选: 启用Claude的思考模式
-      // @ts-expect-error - Claude-specific parameter
-      thinking: { type: "enabled", budget_tokens: 1000 },
     });
 
     // 解析响应
