@@ -8,15 +8,17 @@ interface WordPressPostRequest {
   url: string;
   username: string;
   password: string;
-
-  title?: string;
   keywords: string[];
   prompt: string;
+
+  title?: string;
+  content?: string;
   categories?: number[] | string[]; // 支持数字ID或字符串名称
   tags?: number[] | string[]; // 支持数字ID或字符串名称
   excerpt?: string;
   meta?: Record<string, any>;
   status?: "publish" | "draft" | "pending" | "private";
+
   apiKey?: string;
   model?: string;
 }
@@ -30,13 +32,6 @@ interface WordPressPostData {
   excerpt: string;
   meta: Record<string, any>;
   status: string;
-}
-
-// Standardized API response format
-interface ApiResponse {
-  statusCode: number;
-  body: string;
-  headers: Record<string, string | boolean>;
 }
 
 // Error handling function
@@ -148,7 +143,7 @@ const getTaxonomyIds = async (
   categoryNames?: string[],
   tagNames?: string[]
 ): Promise<{ categoryIds: number[]; tagIds: number[] }> => {
-  const logger = createLogger("wordpress-taxonomy");
+  // const logger = createLogger("wordpress-taxonomy");
   const result = { categoryIds: [] as number[], tagIds: [] as number[] };
 
   // 临时存储分类数据的对象
@@ -286,10 +281,10 @@ const fetchAllTaxonomies = async (
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
     } catch (error) {
-      logger.error(`Error fetching ${taxonomyType}`, {
-        error: error instanceof Error ? error.message : String(error),
-        page,
-      });
+      // logger.error(`Error fetching ${taxonomyType}`, {
+      //   error: error instanceof Error ? error.message : String(error),
+      //   page,
+      // });
       hasMore = false; // 出错时停止获取
     }
   }
@@ -306,14 +301,17 @@ const wordPressService = {
       url,
       username,
       password,
-      title,
       keywords,
       prompt,
+
+      title,
+      content,
       categories,
       tags,
       excerpt,
       meta,
       status = "draft", // 默认为草稿
+
       apiKey,
       model,
     } = request;
@@ -364,23 +362,20 @@ const wordPressService = {
       }
     }
 
-    // 处理关键词和prompt
-    const tagsInput = keywords?.map((tag) => tag.trim()).filter(Boolean) || [];
+    // const tagsInput = keywords?.map((tag) => tag.trim()).filter(Boolean) || [];
 
     // Generate content with error handling
     let generatedContent;
     try {
       generatedContent = await generateContent({
         prompt,
-        keywords: tagsInput,
+        keywords,
         apiKey,
         model,
       });
     } catch (error) {
       // 当内容生成失败时使用备用内容
-      logger.warn("Content generation failed, using fallback content", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn("Content generation failed, using fallback content");
 
       // 创建备用内容
       generatedContent = {
@@ -391,8 +386,8 @@ const wordPressService = {
 
     // Build request data
     const postData: WordPressPostData = {
-      title: title || generatedContent.title || `About: ${keywords.join(", ")}`,
-      content: generatedContent.content,
+      title: title || generatedContent.title,
+      content: content || generatedContent.content,
       status,
       categories: categoryIds,
       tags: tagIds,
