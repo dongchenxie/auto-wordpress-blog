@@ -71,6 +71,11 @@ Do not include any disclaimers or mentions that this was created by AI.`;
     logger.info("Calling Claude API through OpenAI compatibility layer", {
       promptLength: prompt.length,
       keywordsCount: keywords.length,
+      prompt,
+      keywords,
+      maxTokens,
+      temperature,
+      model,
     });
 
     // 发送请求到Claude API
@@ -94,6 +99,7 @@ Do not include any disclaimers or mentions that this was created by AI.`;
     logger.info("Successfully generated content with Claude", {
       contentLength: fullContent.length,
       title,
+      fullContent,
     });
 
     return {

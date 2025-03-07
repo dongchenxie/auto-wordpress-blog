@@ -177,12 +177,12 @@ const getTaxonomyIds = async (
         return categoriesMap[normalizedName] === undefined;
       });
 
-      logger.warn("Some categories not found", {
-        found: foundNames,
-        total: categoryNames.length,
-        missing: missingCategories,
-        missingNormalized: missingCategories.map(normalizeTaxonomyName),
-      });
+      // logger.warn("Some categories not found", {
+      //   found: foundNames,
+      //   total: categoryNames.length,
+      //   missing: missingCategories,
+      //   missingNormalized: missingCategories.map(normalizeTaxonomyName),
+      // });
     }
   }
 
@@ -208,12 +208,12 @@ const getTaxonomyIds = async (
         return tagsMap[normalizedName] === undefined;
       });
 
-      logger.warn("Some tags not found", {
-        found: foundNames,
-        total: tagNames.length,
-        missing: missingTags,
-        missingNormalized: missingTags.map(normalizeTaxonomyName),
-      });
+      // logger.warn("Some tags not found", {
+      //   found: foundNames,
+      //   total: tagNames.length,
+      //   missing: missingTags,
+      //   missingNormalized: missingTags.map(normalizeTaxonomyName),
+      // });
     }
   }
 
