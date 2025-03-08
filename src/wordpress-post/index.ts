@@ -2,6 +2,7 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import axios, { AxiosRequestConfig, AxiosError } from "axios";
 import { createLogger } from "./logger";
 import { generateContent } from "../claude-service";
+// import { imageLoader } from "../image-service/pexels";
 
 // Request body structure definition
 interface WordPressPostRequest {
