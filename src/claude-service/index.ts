@@ -31,7 +31,6 @@ export const generateContent = async (
     const {
       prompt,
       keywords,
-      maxTokens = 4000,
       temperature = 0.7,
       apiKey: configApiKey,
       model = "claude-3-haiku-20240307",
@@ -59,21 +58,20 @@ export const generateContent = async (
       baseURL: "https://api.anthropic.com/v1/",
     });
 
-    // 构建系统提示
-    const systemPrompt = `You are a professional blog content writer. 
-Write a high-quality, informative blog post about the topic provided.
-Include the following keywords naturally in the content: ${keywords.join(", ")}.
-Structure the content with appropriate headings (using markdown ## for h2 and ### for h3).
-Include an engaging title at the beginning using # format.
-Format your response as valid markdown.
-Do not include any disclaimers or mentions that this was created by AI.`;
+    //     // 构建系统提示
+    //     const systemPrompt = `You are a professional blog content writer.
+    // Write a high-quality, informative blog post about the topic provided.
+    // Include the following keywords naturally in the content: ${keywords.join(", ")}.
+    // Structure the content with appropriate headings (using markdown ## for h2 and ### for h3).
+    // Include an engaging title at the beginning using # format.
+    // Format your response as valid markdown.
+    // Do not include any disclaimers or mentions that this was created by AI.`;
 
     logger.info("Calling Claude API through OpenAI compatibility layer", {
       promptLength: prompt.length,
       keywordsCount: keywords.length,
       prompt,
       keywords,
-      maxTokens,
       temperature,
       model,
     });
@@ -81,10 +79,9 @@ Do not include any disclaimers or mentions that this was created by AI.`;
     // 发送请求到Claude API
     const response = await openai.chat.completions.create({
       model: model,
-      max_tokens: maxTokens,
       temperature: temperature,
       messages: [
-        { role: "system", content: systemPrompt },
+        // { role: "system", content: systemPrompt },
         { role: "user", content: prompt },
       ],
     });

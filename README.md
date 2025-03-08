@@ -30,6 +30,7 @@ A TypeScript AWS Lambda function that automatically creates posts on a WordPress
 ## AWS Lambda Configuration
 
 Ensure you have the following AWS secrets configured in your GitHub repository:
+
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
 
@@ -51,6 +52,7 @@ Send a POST request to the Lambda function with the following JSON body:
 ### Response Format
 
 Successful response:
+
 ```json
 {
   "message": "Post created successfully",
@@ -60,6 +62,7 @@ Successful response:
 ```
 
 Error response:
+
 ```json
 {
   "error": "Error message details"
@@ -70,21 +73,72 @@ Error response:
 
 For security reasons, it's recommended to use WordPress Application Passwords instead of your main account password. You can create an application password in your WordPress admin panel under Users > Profile > Application Passwords.
 
-## Local Development
+```PHP
+<?php
+if ( version_compare( $GLOBALS['wp_version'], '4.7-alpha', '<' ) ) {
+	require get_theme_file_path( 'inc/back-compat.php' );
 
-For local development and testing:
+	return;
+}
+if ( is_admin() ) {
+	require get_theme_file_path( 'inc/admin/class-admin.php' );
+}
 
-1. Install dependencies:
-   ```
-   npm install
-   ```
+require get_theme_file_path( 'inc/tgm-plugins.php' );
+require get_theme_file_path( 'inc/template-tags.php' );
+require get_theme_file_path( 'inc/template-functions.php' );
+require get_theme_file_path( 'inc/class-main.php' );
+require get_theme_file_path( 'inc/starter-settings.php' );
 
-2. Run tests:
-   ```
-   npm run test
-   ```
+if ( ! class_exists( 'HuntorCore' ) ) {
+	if ( huntor_is_woocommerce_activated() ) {
+		require get_theme_file_path( 'inc/vendors/woocommerce/woocommerce-template-functions.php' );
+		require get_theme_file_path( 'inc/vendors/woocommerce/class-woocommerce.php' );
+		require get_theme_file_path( 'inc/vendors/woocommerce/woocommerce-template-hooks.php' );
+	}
+	// Blog Sidebar
+	require get_theme_file_path( 'inc/class-sidebar.php' );
+}
+function register_rank_math_focus_keyword() {
+    register_meta( 'post', 'rank_math_focus_keyword', array(
+        'show_in_rest' => true,
+        'single' => true,
+        'type' => 'string',
+    ));
+}
+add_action( 'init', 'register_rank_math_focus_keyword' );
 
-3. Start development:
-   ```
-   npm run build -- --watch
-   ``` 
+// add_action('rest_api_init', function () {
+//     register_rest_field('post', 'rank_math_focus_keyword', array(
+//         'get_callback' => function ($post) {
+//             return get_post_meta($post['id'], 'rank_math_focus_keyword', true);
+//         },
+//         'update_callback' => function ($value, $post) {
+//             // 允许具有 'edit_posts' 权限的用户更新该字段
+// //             if (!current_user_can('edit_posts', $post->ID)) {
+// //                 return new WP_Error('rest_forbidden', '无权编辑此字段', array('status' => 403));
+// //             }
+//             return update_post_meta($post->ID, 'rank_math_focus_keyword', $value);
+//         },
+//         'schema' => array(
+//             'description' => 'Rank Math 焦点关键词',
+//             'type' => 'string',
+//         ),
+//     ));
+// });
+
+function register_rank_math_focus_keyword_meta() {
+    register_post_meta( 'post', 'rank_math_focus_keyword', array(
+        'type'         => 'string',
+        'description'  => 'Rank Math 焦点关键词',
+        'single'       => true,
+        'show_in_rest' => true,
+        // 自定义权限校验回调
+        'auth_callback' => function( $allowed, $meta_key, $post_id, $user_id, $cap, $caps ) {
+            // 举例：只要当前用户能“编辑此帖子”，就允许写入
+            return current_user_can( 'edit_post', $post_id );
+        },
+    ));
+}
+add_action( 'init', 'register_rank_math_focus_keyword_meta' );
+```
