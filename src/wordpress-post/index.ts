@@ -447,13 +447,7 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
       { username: requestBody.username, password: requestBody.password },
       requestBody.keywords,
       requestBody.prompt as any,
-      Array.isArray(requestBody.categories) &&
-        typeof requestBody.categories[0] === "string"
-        ? (requestBody.categories as string[])
-        : [],
-      Array.isArray(requestBody.tags) && typeof requestBody.tags[0] === "string"
-        ? (requestBody.tags as string[])
-        : []
+      requestBody.model as any
     );
 
     // 添加状态
@@ -467,7 +461,7 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
         username: requestBody.username,
         password: requestBody.password,
       },
-      timeout: 30000, // 增加超时时间
+      timeout: 10 * 60 * 1000, // 增加超时时间
     };
 
     const response = await axios.post(endpoint, postData, config);
@@ -531,107 +525,47 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
 // 定义内容策略模板，包含关键词占位符
 const contentStrategyPrompt = `
 CONTENT STRATEGY REQUIREMENTS
-
 Primary Focus: Generate comprehensive, research-based blog content strategy
 Main Keyword: "{PRIMARY_KEYWORD}" (must be incorporated naturally throughout)
 Secondary Keywords: {SECONDARY_KEYWORDS}
 Content Goal: Position FishingFusion.com as an authoritative resource on fishing equipment
-
 DELIVERABLE REQUIREMENTS
-
 Topic Selection: Identify a specific, search-optimized topic related to {PRIMARY_KEYWORD}
 Detailed Outline: Provide structured H2/H3 sections encompassing all critical aspects of the topic
 Comprehensive Metadata Package: Include all SEO elements specified below
-
 METADATA SPECIFICATIONS
-
 SEO Title: Create compelling title with:
 - Main keyword "{PRIMARY_KEYWORD}" positioned near beginning
 - Inclusion of a specific number (e.g., "7 Best", "5 Ways", etc.)
 - Incorporation of power words for click-through optimization
 - Maximum 60 characters for optimal display
-
 Blog Categories: Recommend 1-2 appropriate WordPress categories
-
 SEO Slug: Create concise, keyword-rich URL segment:
 - Must include main keyword "{PRIMARY_KEYWORD}"
 - Exclude stop words (a, the, and, etc.)
 - Use hyphens as word separators
 - Maximum 5-6 words total
-
 SEO-Optimized Tags: Provide 5-8 relevant tags:
 - Present as comma-separated list
 - Include primary and secondary keywords
 - Target specific search terms users might employ
-
 Compelling Excerpt: Create 150-160 character summary that:
 - Incorporates main keyword naturally
 - Highlights key value proposition of the content
 - Contains clear call-to-action element
-
 Focus Keywords: Identify 3-5 primary terms to optimize for:
 - Present as comma-separated list
 - Lead with "{PRIMARY_KEYWORD}" as primary term
 - Include terms with high search volume and moderate competition
-
 IMPLEMENTATION REQUIREMENTS
-
 Keyword Integration: Ensure primary keyword appears in:
 - SEO title (near beginning)
 - Meta description
 - URL slug
 - H1 heading
 - First paragraph of content
-
-
 Alignment Verification: Confirm all metadata elements work together cohesively and support the same search intent
-
 The complete package should provide all necessary metadata components for immediate implementation into WordPress or similar CMS systems for maximum search visibility.
-
-WEBSITE & AUDIENCE INFORMATION
-
-- Store: FishingFusion.com
-- Industry: Fishing equipment and related products
-- Target Audience: English-speaking fishing enthusiasts (both beginners and professionals)
-- Content Purpose: Attract organic traffic through informative, authoritative content that establishes credibility and encourages store exploration
-
-CONTENT SPECIFICATIONS
-
-- Primary Keyword: "fishing rods" (target density: 1%)
-- Secondary Keywords: Include high-search-volume fishing-related terms (target density: 0.5% each)
-- Word Count: Approximately 3,000 words
-- Format: Well-structured HTML with proper heading hierarchy
-- Content Type: Educational, problem-solving, science-based content
-
-REQUIRED STRUCTURAL ELEMENTS
-- Key Takeaways: Begin article with summary of main points
-- Table of Contents: Include for easy navigation with anchor links
-- Introduction: Establish topic relevance and outline article scope
-- Comparison Table: Include near beginning of article for visual reference
-- Main Content Sections: Use logical H2/H3 organization with primary/secondary keywords
-- FAQ Section: Minimum 5 questions addressing common reader concerns
-- Conclusion: Summarize key insights and provide actionable recommendations
-- References: APA-style citation list with clickable links
-
-QUALITY REQUIREMENTS
-- Research Quality: Use credible academic sources, reputable fishing websites, and current statistics
-- Writing Style: Professional yet accessible to both enthusiasts and experts
-- Technical Accuracy: Ensure all fishing information is factually correct
-- Outbound Links: Include links to authoritative external sources
-- Internal Links: Suggest relevant product categories from FishingFusion.com where appropriate
-- Visuals: Include comparison table and suggest other potential visual elements
-
-HTML IMPLEMENTATION
-- Structure: Implement proper H1, H2, H3 tags for SEO optimization
-- Formatting: Use appropriate paragraph breaks, bullet points, and emphasis elements
-- Responsive Design: Ensure content is mobile-friendly
-
-SEO ENHANCEMENT GUIDELINES
-- Incorporate keywords naturally without keyword stuffing
-- Use semantic variations of keywords
-- Include schema markup recommendations where relevant
-
-The blog should position FishingFusion.com as an authoritative resource on fishing equipment while naturally guiding readers toward product exploration and purchase consideration.
 `;
 
 /**
@@ -643,7 +577,8 @@ export async function generateCompleteWordPressPost(
   keywords: string[],
   prompt: string,
   categoryNames: string[] = [],
-  tagNames: string[] = []
+  tagNames: string[] = [],
+  model?: string
 ): Promise<any> {
   const logger = createLogger("wordpress-post-generator");
   logger.info("Generating complete WordPress post", {
@@ -667,6 +602,7 @@ export async function generateCompleteWordPressPost(
 
     // 3. 替换关键词占位符
     const finalPrompt = contentStrategyPrompt
+      .replace("\n", "")
       .replace(/\{PRIMARY_KEYWORD\}/g, primaryKeyword)
       .replace(/\{SECONDARY_KEYWORDS\}/g, secondaryKeywords);
 
@@ -687,10 +623,11 @@ export async function generateCompleteWordPressPost(
       keywords,
       outputFormat: "json",
       jsonSchema,
+      model,
     });
 
     logger.info("Content generated successfully", {
-      contentReceived: !!generatedContent,
+      generatedContent,
     });
 
     // 6. 处理分类
@@ -710,10 +647,9 @@ export async function generateCompleteWordPressPost(
           normalized,
           Object.keys(categoriesMap)
         );
+        logger.info(normalized, Object.keys(categoriesMap));
         if (fuzzyMatch && categoriesMap[fuzzyMatch]) {
           categoryIds.push(categoriesMap[fuzzyMatch]);
-        } else {
-          categoryIds.push(1); // 默认分类（通常为"未分类"）
         }
       }
     }
@@ -798,7 +734,7 @@ async function createNewTags(
 
       if (response.data && response.data.id) {
         tagIds.push(response.data.id);
-        logger.info(`Created new tag: ${tagName}`, { id: response.data.id });
+        // logger.info(`Created new tag: ${tagName}`, { id: response.data.id });
       }
     } catch (error) {
       logger.error(`Failed to create tag: ${tagName}`, {
