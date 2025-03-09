@@ -575,10 +575,10 @@ export async function generateCompleteWordPressPost(
   url: string,
   auth: { username: string; password: string },
   keywords: string[],
-  prompt: string,
+  prompt?: string,
+  model?: string,
   categoryNames: string[] = [],
-  tagNames: string[] = [],
-  model?: string
+  tagNames: string[] = []
 ): Promise<any> {
   const logger = createLogger("wordpress-post-generator");
   logger.info("Generating complete WordPress post", {
@@ -597,14 +597,17 @@ export async function generateCompleteWordPressPost(
     ]);
 
     // 2. 准备关键词替换
-    const primaryKeyword = prompt + keywords[0];
+    const primaryKeyword = keywords[0];
     const secondaryKeywords = keywords.slice(1).join(", ");
 
     // 3. 替换关键词占位符
-    const finalPrompt = contentStrategyPrompt
-      .replace("\n", "")
+    let finalPrompt = contentStrategyPrompt
+      .replace(/\n/g, "")
       .replace(/\{PRIMARY_KEYWORD\}/g, primaryKeyword)
       .replace(/\{SECONDARY_KEYWORDS\}/g, secondaryKeywords);
+    if (prompt) {
+      finalPrompt += prompt;
+    }
 
     // 4. 定义符合要求的JSON输出结构
     const jsonSchema = {
