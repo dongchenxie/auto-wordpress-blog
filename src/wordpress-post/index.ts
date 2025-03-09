@@ -10,8 +10,8 @@ interface WordPressPostRequest {
   username: string;
   password: string;
   keywords: string[];
-  prompt: string;
 
+  prompt?: string;
   title?: string;
   content?: string;
   categories?: number[] | string[]; // 支持数字ID或字符串名称
@@ -446,7 +446,7 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
       requestBody.url,
       { username: requestBody.username, password: requestBody.password },
       requestBody.keywords,
-      requestBody.prompt,
+      requestBody.prompt as any,
       Array.isArray(requestBody.categories) &&
         typeof requestBody.categories[0] === "string"
         ? (requestBody.categories as string[])
@@ -526,17 +526,6 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
     logger.error("Unexpected error", { error: String(error) });
     return createErrorResponse("Internal server error", 500);
   }
-};
-
-// 为测试目的导出内部函数
-export {
-  formatResponse,
-  normalizeTaxonomyName,
-  validateRequest,
-  getTaxonomyIds,
-  fetchAllTaxonomies,
-  createErrorResponse,
-  createSuccessResponse,
 };
 
 // 定义内容策略模板，包含关键词占位符
@@ -673,7 +662,7 @@ export async function generateCompleteWordPressPost(
     ]);
 
     // 2. 准备关键词替换
-    const primaryKeyword = keywords[0] || prompt;
+    const primaryKeyword = prompt + keywords[0];
     const secondaryKeywords = keywords.slice(1).join(", ");
 
     // 3. 替换关键词占位符
@@ -893,3 +882,14 @@ function findFuzzyMatch(
 
   return undefined;
 }
+
+// 为测试目的导出内部函数
+export {
+  formatResponse,
+  normalizeTaxonomyName,
+  validateRequest,
+  getTaxonomyIds,
+  fetchAllTaxonomies,
+  createErrorResponse,
+  createSuccessResponse,
+};

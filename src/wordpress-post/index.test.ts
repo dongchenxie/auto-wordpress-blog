@@ -67,7 +67,6 @@ describe("WordPress发布Lambda函数", () => {
           username: "user",
           password: "pass",
           keywords: ["test"],
-          prompt: "test",
         }),
       } as any;
       const result = await handler(event);
@@ -85,7 +84,6 @@ describe("WordPress发布Lambda函数", () => {
           username: "user",
           password: "pass",
           keywords: ["test"],
-          prompt: "test",
         }),
       } as any;
       const result = await handler(event);
@@ -123,7 +121,6 @@ describe("WordPress发布Lambda函数", () => {
           username: "wrong_user",
           password: "wrong_password",
           keywords: ["test"],
-          prompt: "Test post",
         }),
       } as any;
 
@@ -160,7 +157,6 @@ describe("WordPress发布Lambda函数", () => {
           username: "test_user",
           password: "test_password",
           keywords: ["test"],
-          prompt: "Test post",
         }),
       } as any;
 
@@ -197,7 +193,6 @@ describe("WordPress发布Lambda函数", () => {
           username: "test_user",
           password: "test_password",
           keywords: ["test"],
-          prompt: "Test post",
         }),
       } as any;
 
@@ -234,7 +229,6 @@ describe("WordPress发布Lambda函数", () => {
           username: "test_user",
           password: "test_password",
           keywords: ["test"],
-          prompt: "Test post",
         }),
       } as any;
 
@@ -261,7 +255,6 @@ describe("WordPress发布Lambda函数", () => {
           username: "test_user",
           password: "test_password",
           keywords: ["test"],
-          prompt: "Test post",
         }),
       } as any;
 
@@ -328,11 +321,7 @@ describe("内部工具函数测试", () => {
       username: "user",
       password: "pass",
       keywords: ["test"],
-      prompt: "prompt",
     };
-
-    const emptyPrompt = { ...validRequest, prompt: "  " };
-    expect(validateRequest(emptyPrompt)).toContain("Prompt");
 
     // 测试无效URL格式异常处理
     try {
@@ -356,7 +345,6 @@ describe("内部工具函数测试", () => {
       username: "user",
       password: "pass",
       keywords: ["test"],
-      prompt: "prompt",
     };
 
     // 验证各个字段缺失的情况
@@ -380,12 +368,6 @@ describe("内部工具函数测试", () => {
     expect(
       validateRequest({ ...validRequest, keywords: null as any })
     ).toContain("Keywords");
-    expect(validateRequest({ ...validRequest, prompt: "" })).toContain(
-      "Prompt"
-    );
-    expect(validateRequest({ ...validRequest, prompt: "   " })).toContain(
-      "Prompt"
-    );
 
     // 验证有效请求返回null
     expect(validateRequest(validRequest)).toBeNull();
