@@ -35,7 +35,7 @@ export const generateContent = async (
       temperature = 0.7,
       apiKey: configApiKey,
       model = "claude-3-haiku-20240307",
-      outputFormat = "text",
+      outputFormat = "json",
       jsonSchema,
     } = config;
 
@@ -70,7 +70,7 @@ export const generateContent = async (
       systemPrompt = `You are a JSON output API. 
 You must ALWAYS respond with valid JSON only, without any additional text or explanations before or after.
 Your output MUST be parseable by JSON.parse() and match the following schema:
-${JSON.stringify(jsonSchema || { content: "string" }, null, 2)}
+${JSON.stringify(jsonSchema)}
 
 Do not include any markdown formatting, code blocks, or text outside the JSON structure.`;
 
@@ -81,7 +81,9 @@ Do not include any markdown formatting, code blocks, or text outside the JSON st
 
     logger.info(`Calling Claude API with ${outputFormat} format`, {
       promptLength: finalPrompt.length,
+      finalPrompt: finalPrompt,
       keywordsCount: keywords.length,
+      keywords: keywords,
       outputFormat,
       hasJsonSchema: !!jsonSchema,
     });
@@ -96,6 +98,9 @@ Do not include any markdown formatting, code blocks, or text outside the JSON st
           : []),
         { role: "user", content: finalPrompt },
       ] as any,
+    });
+    logger.info("received response from Claude API", {
+      response: response,
     });
 
     // 解析响应
