@@ -224,7 +224,6 @@ describe("Claude服务", () => {
       apiKey: "test-api-key",
       model: "claude-3-opus-20240229", // 自定义模型
       temperature: 0.3, // 自定义温度
-      maxTokens: 2000, // 自定义最大令牌数
     };
 
     await generateContent(config);

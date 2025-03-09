@@ -366,51 +366,24 @@ const wordPressService = {
     // const tagsInput = keywords?.map((tag) => tag.trim()).filter(Boolean) || [];
 
     // Generate content with error handling
-    let generatedContent;
-    try {
-      generatedContent = await generateContent({
-        prompt,
-        keywords,
-        apiKey,
-        model,
-      });
-    } catch (error) {
-      // 当内容生成失败时使用备用内容
-      logger.warn("Content generation failed, using fallback content");
+    // let generatedContent;
+    // try {
+    //   generatedContent = await generateContent({
+    //     prompt,
+    //     keywords,
+    //     apiKey,
+    //     model,
+    //   });
+    // } catch (error) {
+    //   // 当内容生成失败时使用备用内容
+    //   logger.warn("Content generation failed, using fallback content");
 
-      // 创建备用内容
-      generatedContent = {
-        title: `About: ${keywords.join(", ")}`,
-        content: `<p>${prompt}</p><p>Keywords: ${keywords.join(", ")}</p>`,
-      };
-    }
-
-    // Build request data
-    const postData: WordPressPostData = {
-      title: title || generatedContent.title,
-      content: content || generatedContent.content,
-      status,
-      categories: categoryIds,
-      tags: tagIds,
-      excerpt: excerpt || "",
-      meta: meta || {},
-    };
-
-    // Build request configuration
-    const config: AxiosRequestConfig = {
-      headers: {
-        "Content-Type": "application/json",
-      },
-      auth: {
-        username,
-        password,
-      },
-      timeout: 10000, // 10 seconds timeout
-    };
-
-    // Send request
-    const endpoint = `${url}/wp-json/wp/v2/posts`;
-    return axios.post(endpoint, postData, config);
+    //   // 创建备用内容
+    //   generatedContent = {
+    //     title: `About: ${keywords.join(", ")}`,
+    //     content: `<p>${prompt}</p><p>Keywords: ${keywords.join(", ")}</p>`,
+    //   };
+    // }
   },
 };
 
@@ -468,10 +441,37 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
       return createErrorResponse(validationError, 400);
     }
 
-    // 调用WordPress API
-    logger.info("Calling WordPress API", { requestBody: requestBody });
-    const response = await wordPressService.createPost(requestBody);
+    logger.info("Using complete blog generation feature");
 
+    const postData = await generateCompleteWordPressPost(
+      requestBody.url,
+      { username: requestBody.username, password: requestBody.password },
+      requestBody.keywords,
+      requestBody.prompt,
+      Array.isArray(requestBody.categories) &&
+        typeof requestBody.categories[0] === "string"
+        ? (requestBody.categories as string[])
+        : [],
+      Array.isArray(requestBody.tags) && typeof requestBody.tags[0] === "string"
+        ? (requestBody.tags as string[])
+        : []
+    );
+
+    // 添加状态
+    postData.status = requestBody.status || "draft";
+
+    // 发送到WordPress
+    const endpoint = `${requestBody.url}/wp-json/wp/v2/posts`;
+    const config: AxiosRequestConfig = {
+      headers: { "Content-Type": "application/json" },
+      auth: {
+        username: requestBody.username,
+        password: requestBody.password,
+      },
+      timeout: 30000, // 增加超时时间
+    };
+
+    const response = await axios.post(endpoint, postData, config);
     // 返回成功响应
     // logger.info("Post created successfully", { postId: response.data.id });
     return createSuccessResponse(
@@ -539,3 +539,364 @@ export {
   createErrorResponse,
   createSuccessResponse,
 };
+
+// 定义内容策略模板，包含关键词占位符
+const contentStrategyPrompt = `
+CONTENT STRATEGY REQUIREMENTS
+
+Primary Focus: Generate comprehensive, research-based blog content strategy
+Main Keyword: "{PRIMARY_KEYWORD}" (must be incorporated naturally throughout)
+Secondary Keywords: {SECONDARY_KEYWORDS}
+Content Goal: Position FishingFusion.com as an authoritative resource on fishing equipment
+
+DELIVERABLE REQUIREMENTS
+
+Topic Selection: Identify a specific, search-optimized topic related to {PRIMARY_KEYWORD}
+Detailed Outline: Provide structured H2/H3 sections encompassing all critical aspects of the topic
+Comprehensive Metadata Package: Include all SEO elements specified below
+
+METADATA SPECIFICATIONS
+
+SEO Title: Create compelling title with:
+- Main keyword "{PRIMARY_KEYWORD}" positioned near beginning
+- Inclusion of a specific number (e.g., "7 Best", "5 Ways", etc.)
+- Incorporation of power words for click-through optimization
+- Maximum 60 characters for optimal display
+
+Blog Categories: Recommend 1-2 appropriate WordPress categories
+
+SEO Slug: Create concise, keyword-rich URL segment:
+- Must include main keyword "{PRIMARY_KEYWORD}"
+- Exclude stop words (a, the, and, etc.)
+- Use hyphens as word separators
+- Maximum 5-6 words total
+
+SEO-Optimized Tags: Provide 5-8 relevant tags:
+- Present as comma-separated list
+- Include primary and secondary keywords
+- Target specific search terms users might employ
+
+Compelling Excerpt: Create 150-160 character summary that:
+- Incorporates main keyword naturally
+- Highlights key value proposition of the content
+- Contains clear call-to-action element
+
+Focus Keywords: Identify 3-5 primary terms to optimize for:
+- Present as comma-separated list
+- Lead with "{PRIMARY_KEYWORD}" as primary term
+- Include terms with high search volume and moderate competition
+
+IMPLEMENTATION REQUIREMENTS
+
+Keyword Integration: Ensure primary keyword appears in:
+- SEO title (near beginning)
+- Meta description
+- URL slug
+- H1 heading
+- First paragraph of content
+
+
+Alignment Verification: Confirm all metadata elements work together cohesively and support the same search intent
+
+The complete package should provide all necessary metadata components for immediate implementation into WordPress or similar CMS systems for maximum search visibility.
+
+WEBSITE & AUDIENCE INFORMATION
+
+- Store: FishingFusion.com
+- Industry: Fishing equipment and related products
+- Target Audience: English-speaking fishing enthusiasts (both beginners and professionals)
+- Content Purpose: Attract organic traffic through informative, authoritative content that establishes credibility and encourages store exploration
+
+CONTENT SPECIFICATIONS
+
+- Primary Keyword: "fishing rods" (target density: 1%)
+- Secondary Keywords: Include high-search-volume fishing-related terms (target density: 0.5% each)
+- Word Count: Approximately 3,000 words
+- Format: Well-structured HTML with proper heading hierarchy
+- Content Type: Educational, problem-solving, science-based content
+
+REQUIRED STRUCTURAL ELEMENTS
+- Key Takeaways: Begin article with summary of main points
+- Table of Contents: Include for easy navigation with anchor links
+- Introduction: Establish topic relevance and outline article scope
+- Comparison Table: Include near beginning of article for visual reference
+- Main Content Sections: Use logical H2/H3 organization with primary/secondary keywords
+- FAQ Section: Minimum 5 questions addressing common reader concerns
+- Conclusion: Summarize key insights and provide actionable recommendations
+- References: APA-style citation list with clickable links
+
+QUALITY REQUIREMENTS
+- Research Quality: Use credible academic sources, reputable fishing websites, and current statistics
+- Writing Style: Professional yet accessible to both enthusiasts and experts
+- Technical Accuracy: Ensure all fishing information is factually correct
+- Outbound Links: Include links to authoritative external sources
+- Internal Links: Suggest relevant product categories from FishingFusion.com where appropriate
+- Visuals: Include comparison table and suggest other potential visual elements
+
+HTML IMPLEMENTATION
+- Structure: Implement proper H1, H2, H3 tags for SEO optimization
+- Formatting: Use appropriate paragraph breaks, bullet points, and emphasis elements
+- Responsive Design: Ensure content is mobile-friendly
+
+SEO ENHANCEMENT GUIDELINES
+- Incorporate keywords naturally without keyword stuffing
+- Use semantic variations of keywords
+- Include schema markup recommendations where relevant
+
+The blog should position FishingFusion.com as an authoritative resource on fishing equipment while naturally guiding readers toward product exploration and purchase consideration.
+`;
+
+/**
+ * 生成完整的WordPress文章，处理类别、标签、特色图片等
+ */
+export async function generateCompleteWordPressPost(
+  url: string,
+  auth: { username: string; password: string },
+  keywords: string[],
+  topic: string,
+  categoryNames: string[] = [],
+  tagNames: string[] = []
+): Promise<any> {
+  const logger = createLogger("wordpress-post-generator");
+  logger.info("Generating complete WordPress post", {
+    topic,
+    keywords: keywords.join(", "),
+  });
+
+  try {
+    // 1. 获取所有分类和标签
+    const categoriesMap: Record<string, number> = {};
+    const tagsMap: Record<string, number> = {};
+
+    await Promise.all([
+      fetchAllTaxonomies(url, auth, "categories", categoriesMap),
+      fetchAllTaxonomies(url, auth, "tags", tagsMap),
+    ]);
+
+    // 2. 准备关键词替换
+    const primaryKeyword = keywords[0] || topic;
+    const secondaryKeywords = keywords.slice(1).join(", ");
+
+    // 3. 替换关键词占位符
+    const finalPrompt = contentStrategyPrompt
+      .replace(/\{PRIMARY_KEYWORD\}/g, primaryKeyword)
+      .replace(
+        /\{SECONDARY_KEYWORDS\}/g,
+        secondaryKeywords || "related fishing terms"
+      );
+
+    // 4. 定义符合要求的JSON输出结构
+    const jsonSchema = {
+      slug: "string",
+      title: "string",
+      content: "string",
+      excerpt: "string",
+      categories: ["string"],
+      tags: ["string"],
+      focus_keywords: ["string"],
+    };
+
+    // 5. 调用Claude API生成JSON格式内容
+    const generatedContent = await generateContent({
+      prompt: finalPrompt,
+      keywords,
+      outputFormat: "json",
+      jsonSchema,
+    });
+
+    logger.info("Content generated successfully", {
+      contentReceived: !!generatedContent,
+    });
+
+    // 6. 处理分类
+    const categoryIds: number[] = [];
+    const generatedCategories = (generatedContent as any).categories ||
+      categoryNames || ["Fishing"];
+
+    for (const categoryName of generatedCategories) {
+      const normalized = normalizeTaxonomyName(categoryName);
+
+      // 直接匹配或模糊匹配
+      if (categoriesMap[normalized]) {
+        categoryIds.push(categoriesMap[normalized]);
+      } else {
+        // 尝试模糊匹配
+        const fuzzyMatch = findFuzzyMatch(
+          normalized,
+          Object.keys(categoriesMap)
+        );
+        if (fuzzyMatch && categoriesMap[fuzzyMatch]) {
+          categoryIds.push(categoriesMap[fuzzyMatch]);
+        } else {
+          categoryIds.push(1); // 默认分类（通常为"未分类"）
+        }
+      }
+    }
+
+    // 7. 处理标签
+    let tagIds: number[] = [];
+    const generatedTags =
+      (generatedContent as any).tags || tagNames || keywords;
+
+    if (generatedTags && generatedTags.length > 0) {
+      // 处理已存在的标签
+      const existingTagIds: number[] = [];
+      const tagsToCreate: string[] = [];
+
+      for (const tagName of generatedTags) {
+        const normalized = normalizeTaxonomyName(tagName);
+        if (tagsMap[normalized]) {
+          existingTagIds.push(tagsMap[normalized]);
+        } else {
+          tagsToCreate.push(tagName);
+        }
+      }
+
+      // 创建新标签
+      if (tagsToCreate.length > 0) {
+        const newTagIds = await createNewTags(url, auth, tagsToCreate);
+        tagIds = [...existingTagIds, ...newTagIds];
+      } else {
+        tagIds = existingTagIds;
+      }
+    }
+
+    // 8. 查找特色图片
+    // let featuredMediaId = await findFeaturedMedia(url, auth, primaryKeyword);
+
+    // 9. 构建最终的WordPress文章数据
+    const postData = {
+      slug: (generatedContent as any).slug,
+      title: (generatedContent as any).title,
+      content: (generatedContent as any).content,
+      excerpt: (generatedContent as any).excerpt,
+      // featured_media: featuredMediaId,
+      rank_math_focus_keyword:
+        (generatedContent as any).focus_keywords?.join(",") ||
+        keywords.join(","),
+      categories: categoryIds,
+      tags: tagIds,
+    };
+
+    logger.info("WordPress post data prepared", {
+      title: postData.title.rendered,
+      slug: postData.slug,
+      categoryCount: categoryIds.length,
+      tagCount: tagIds.length,
+    });
+
+    return postData;
+  } catch (error) {
+    logger.error("Error generating WordPress post", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
+/**
+ * 创建新标签并返回创建的标签ID数组
+ */
+async function createNewTags(
+  url: string,
+  auth: { username: string; password: string },
+  tagNames: string[]
+): Promise<number[]> {
+  const tagIds: number[] = [];
+  const logger = createLogger("wordpress-tags");
+
+  for (const tagName of tagNames) {
+    try {
+      const endpoint = `${url}/wp-json/wp/v2/tags`;
+      const response = await axios.post(
+        endpoint,
+        { name: tagName },
+        { auth, timeout: 10000 }
+      );
+
+      if (response.data && response.data.id) {
+        tagIds.push(response.data.id);
+        logger.info(`Created new tag: ${tagName}`, { id: response.data.id });
+      }
+    } catch (error) {
+      logger.error(`Failed to create tag: ${tagName}`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return tagIds;
+}
+
+/**
+ * 在现有WordPress媒体库中查找与关键词相关的图片
+ */
+async function findFeaturedMedia(
+  url: string,
+  auth: { username: string; password: string },
+  keyword: string
+): Promise<number | undefined> {
+  const logger = createLogger("wordpress-media");
+
+  try {
+    // 搜索媒体库中的图片
+    const searchTerm = encodeURIComponent(keyword);
+    const endpoint = `${url}/wp-json/wp/v2/media?search=${searchTerm}&media_type=image&per_page=1`;
+
+    const response = await axios.get(endpoint, {
+      auth,
+      timeout: 10000,
+    });
+
+    if (response.data && response.data.length > 0) {
+      logger.info(`Found matching media for keyword: ${keyword}`, {
+        mediaId: response.data[0].id,
+      });
+      return response.data[0].id;
+    }
+
+    // 如果没找到，尝试只使用关键词的一部分
+    if (keyword.includes(" ")) {
+      const firstWord = keyword.split(" ")[0];
+      return findFeaturedMedia(url, auth, firstWord);
+    }
+
+    logger.info(`No matching media found for keyword: ${keyword}`);
+    return undefined;
+  } catch (error) {
+    logger.error(`Error finding featured media for: ${keyword}`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
+
+/**
+ * 简单的模糊匹配函数，用于匹配分类名
+ */
+function findFuzzyMatch(
+  target: string,
+  candidates: string[]
+): string | undefined {
+  // 精确匹配
+  if (candidates.includes(target)) {
+    return target;
+  }
+
+  // 包含匹配
+  const containsMatches = candidates.filter(
+    (c) => c.includes(target) || target.includes(c)
+  );
+
+  if (containsMatches.length > 0) {
+    // 返回长度最接近的匹配
+    return containsMatches.reduce((closest, current) =>
+      Math.abs(current.length - target.length) <
+      Math.abs(closest.length - target.length)
+        ? current
+        : closest
+    );
+  }
+
+  return undefined;
+}
