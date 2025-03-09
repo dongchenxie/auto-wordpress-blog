@@ -69,7 +69,7 @@ const formatResponse = (
 
 // Validate request fields
 const validateRequest = (request: WordPressPostRequest): string | null => {
-  const { url, username, password, keywords, prompt } = request;
+  const { url, username, password, keywords } = request;
 
   // 修改验证逻辑，检查trim后的值
   if (!url || url.trim() === "") return "WordPress URL(url) cannot be empty";
@@ -79,7 +79,6 @@ const validateRequest = (request: WordPressPostRequest): string | null => {
     return "Password(password) cannot be empty";
   if (!Array.isArray(keywords) || keywords.length === 0)
     return "Keywords(keywords) must be a non-empty array";
-  if (!prompt || prompt.trim() === "") return "Prompt(prompt) cannot be empty";
 
   // URL格式验证
   try {
@@ -653,13 +652,13 @@ export async function generateCompleteWordPressPost(
   url: string,
   auth: { username: string; password: string },
   keywords: string[],
-  topic: string,
+  prompt: string,
   categoryNames: string[] = [],
   tagNames: string[] = []
 ): Promise<any> {
   const logger = createLogger("wordpress-post-generator");
   logger.info("Generating complete WordPress post", {
-    topic,
+    prompt,
     keywords: keywords.join(", "),
   });
 
@@ -674,16 +673,13 @@ export async function generateCompleteWordPressPost(
     ]);
 
     // 2. 准备关键词替换
-    const primaryKeyword = keywords[0] || topic;
+    const primaryKeyword = keywords[0] || prompt;
     const secondaryKeywords = keywords.slice(1).join(", ");
 
     // 3. 替换关键词占位符
     const finalPrompt = contentStrategyPrompt
       .replace(/\{PRIMARY_KEYWORD\}/g, primaryKeyword)
-      .replace(
-        /\{SECONDARY_KEYWORDS\}/g,
-        secondaryKeywords || "related fishing terms"
-      );
+      .replace(/\{SECONDARY_KEYWORDS\}/g, secondaryKeywords);
 
     // 4. 定义符合要求的JSON输出结构
     const jsonSchema = {
@@ -779,10 +775,7 @@ export async function generateCompleteWordPressPost(
     };
 
     logger.info("WordPress post data prepared", {
-      title: postData.title.rendered,
-      slug: postData.slug,
-      categoryCount: categoryIds.length,
-      tagCount: tagIds.length,
+      postData: postData,
     });
 
     return postData;
