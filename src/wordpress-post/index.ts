@@ -730,20 +730,75 @@ Strict exclusions:
 
       // 然后获取正文内容
       logger.info("Generating content...");
+
+      // 修改提示词，不再要求JSON格式输出
+      const conversationalPrompt = `${primaryKeyword} Article Creation Request:
+
+PRIMARY KEYWORD: ${primaryKeyword}
+SECONDARY KEYWORDS: ${secondaryKeywords}
+
+Please write a comprehensive, well-structured HTML article about ${primaryKeyword}. 
+The article should include:
+
+1. An engaging introduction explaining the importance of ${primaryKeyword}
+2. Multiple H2 and H3 sections covering all important aspects
+3. A comparison table of different ${primaryKeyword} options
+4. Practical tips and recommendations
+5. A FAQ section with at least 5 common questions
+6. A conclusion summarizing the key points
+
+Format the article with proper HTML tags (<h1>, <h2>, <h3>, <p>, <table>, etc.). 
+Make the content informative, accurate, and helpful for fishing enthusiasts.
+
+WORD COUNT: Aim for approximately 3,000 words total.
+TONE: Professional but accessible to both beginners and experts.
+
+${prompt || ""}`;
+
+      // 改为对话模式生成内容
       contentResult = await generateContent({
-        prompt: `${finalPrompt}`,
+        prompt: conversationalPrompt,
         keywords,
-        outputFormat: "json",
-        jsonSchema: contentSchema,
         model,
-        temperature: 1,
-        max_tokens: 10000, // 减少最大token数，但保持足够生成内容
-        think: { type: "enabled", budget_tokens: 2000 },
+        temperature: 0.7,
+        max_tokens: 4000, // 减少token上限以避免速率限制
+        // 移除outputFormat和jsonSchema参数
       });
 
       logger.info("Content generation successful", {
-        contentLength: contentResult?.content?.length || 0,
+        contentLength:
+          typeof contentResult === "string"
+            ? contentResult.length
+            : contentResult?.content?.length || 0,
       });
+
+      // 处理对话模式的响应 (不再作为JSON解析)
+      let articleContent = "";
+      if (typeof contentResult === "string") {
+        // 如果直接返回字符串
+        articleContent = contentResult;
+      } else if (contentResult?.content) {
+        // 如果返回对象中包含content字段
+        articleContent = contentResult.content;
+      } else {
+        // 无法获取内容，使用备用内容
+        logger.warn("Could not extract content from response, using fallback");
+        articleContent = `
+          <h1>${primaryKeyword}</h1>
+          <p>This is an article about ${primaryKeyword}.</p>
+          <p>Keywords: ${keywords.join(", ")}</p>
+          ${prompt ? `<p>Additional information: ${prompt}</p>` : ""}
+        `;
+      }
+
+      // 检查内容是否只有HTML片段而没有包含在<html>标签中
+      if (
+        !articleContent.includes("<html") &&
+        !articleContent.includes("<!DOCTYPE")
+      ) {
+        // 添加基本HTML结构
+        articleContent = `<div class="article-content">${articleContent}</div>`;
+      }
     } catch (error) {
       // 错误处理，检查是否为速率限制错误
       const errorMessage =

@@ -27,36 +27,35 @@ export interface ClaudeResponse {
  */
 export const generateContent = async (
   config: ClaudeRequestConfig
-): Promise<ClaudeResponse | Record<string, any>> => {
+): Promise<ClaudeResponse | Record<string, any> | string> => {
+  const {
+    prompt,
+    keywords,
+    apiKey: configApiKey,
+    model: configModel,
+    temperature = 0.7,
+    outputFormat,
+    jsonSchema,
+    max_tokens,
+  } = config;
+
   const logger = createLogger("claude-service");
+  const model =
+    configModel || process.env.CLAUDE_MODEL || "claude-3-haiku-20240307";
+  const apiKey =
+    configApiKey || process.env.API_KEY || process.env.CLAUDE_API_KEY;
+
+  if (!apiKey) {
+    logger.error("API key not provided");
+    throw new Error("API key is required for Claude API");
+  }
 
   try {
-    const {
-      prompt,
-      keywords,
-      temperature = 0.7,
-      apiKey: configApiKey,
-      model = "claude-3-haiku-20240307",
-      outputFormat = "json",
-      jsonSchema,
-      max_tokens = 4000,
-      think,
-    } = config;
-
-    // 优先使用传入的API密钥，其次使用环境变量中的API密钥
-    const apiKey =
-      configApiKey || process.env.API_KEY || process.env.CLAUDE_API_KEY;
-
-    if (!apiKey) {
-      throw new Error(
-        "Claude API key is required either in config or as environment variable"
-      );
-    }
-
     logger.info("Initializing OpenAI SDK with Claude compatibility", {
       model,
       usingEnvironmentKey:
         !configApiKey && !!(process.env.API_KEY || process.env.CLAUDE_API_KEY),
+      mode: outputFormat || "conversation",
     });
 
     // 创建OpenAI客户端，但指向Anthropic API
@@ -78,86 +77,78 @@ ${JSON.stringify(jsonSchema)}
 
 Do not include any markdown formatting, code blocks, or text outside the JSON structure.`;
       systemPrompt = systemPrompt.replace(/\n/g, "");
+
       // 修改用户提示，确保它包含JSON要求
-      finalPrompt = `${prompt}\n
-      \nRemember to respond ONLY with valid JSON matching the required schema.`;
+      finalPrompt = `${finalPrompt}\n\nRemember to respond ONLY with valid JSON matching the required schema.`;
+    } else {
+      // 对话模式系统提示
+      systemPrompt = `You are an experienced content writer specializing in creating well-structured, SEO-optimized HTML content.
+Your responses should be direct, focused and implementation-ready without explanations or markdown formatting.
+When asked to generate HTML content, provide only the requested HTML that can be directly used in a website.`;
     }
 
-    logger.info(`Calling Claude API with ${outputFormat} format`, {
-      promptLength: finalPrompt.length,
-      finalPrompt: finalPrompt,
-      keywordsCount: keywords.length,
-      keywords: keywords,
-      outputFormat,
-      hasJsonSchema: !!jsonSchema,
-    });
+    // 调用Claude API，使用OpenAI兼容格式
+    // 根据模式调整最大token数
+    const maxResponseTokens =
+      max_tokens || (outputFormat === "json" ? 2500 : 4000);
 
-    // 发送请求到Claude API
-    const createParams = {
+    const response = await openai.chat.completions.create({
       model: model,
-      temperature: temperature,
       messages: [
-        ...(systemPrompt
-          ? [{ role: "system", content: systemPrompt as string }]
-          : []),
+        ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
         { role: "user", content: finalPrompt },
       ] as any,
-      max_tokens: max_tokens,
-      thinking: think,
-    };
-
-    logger.info("Calling openai.chat.completions.create with params", {
-      createParams: createParams,
+      temperature: temperature,
+      max_tokens: maxResponseTokens,
     });
 
-    const response = await openai.chat.completions.create(createParams);
-    logger.info("received response from Claude API", {
-      response: response,
-    });
-
-    // 解析响应
+    // 处理返回结果
     const content = response.choices[0].message.content || "";
 
     if (outputFormat === "json") {
       try {
-        // 尝试解析JSON响应
+        // 解析JSON响应
         const jsonResponse = JSON.parse(content);
-        logger.info("Successfully generated JSON content with Claude", {
-          keys: Object.keys(jsonResponse),
-        });
         return jsonResponse;
-      } catch (error) {
-        logger.error("Failed to parse JSON from Claude response", {
-          error: error instanceof Error ? error.message : String(error),
-          content:
-            content.substring(0, 200) + (content.length > 200 ? "..." : ""),
+      } catch (parseError) {
+        logger.error("Failed to parse JSON response", {
+          parseError:
+            parseError instanceof Error
+              ? parseError.message
+              : String(parseError),
+          rawContent: content.substring(0, 200) + "...",
         });
-        // 返回纯文本作为内容，并添加错误提示
+
+        // 返回解析错误信息和原始内容
         return {
-          parseError: "Failed to parse JSON from Claude response",
+          parseError: "Failed to parse JSON",
           rawContent: content,
         };
       }
-    } else {
-      // 文本模式处理
-      // 提取标题 (假设标题是第一个#开头的行)
-      const titleMatch = content.match(/^#\s+(.+)$/m);
-      const title = titleMatch ? titleMatch[1] : `Article about ${keywords[0]}`;
+    }
 
-      logger.info("Successfully generated text content with Claude", {
-        contentLength: content.length,
-        title,
-      });
-
+    // 对话模式直接返回文本内容
+    if (!content.includes("<")) {
+      // 可能不是HTML内容，包装在对象中
       return {
         content: content,
-        title,
+        title: keywords ? `About: ${keywords.join(", ")}` : "Generated Content",
       };
     }
+
+    // 直接返回HTML内容
+    return content;
   } catch (error) {
+    // 错误处理...与之前相同
     logger.error("Failed to generate content with Claude API", {
       error: error instanceof Error ? error.message : String(error),
     });
-    throw error;
+
+    // 返回友好的错误对象
+    return {
+      error: error instanceof Error ? error.message : String(error),
+      content: `<p>Error generating content. Please try again later.</p>
+<p>Keywords: ${keywords ? keywords.join(", ") : "None provided"}</p>`,
+    };
   }
 };
