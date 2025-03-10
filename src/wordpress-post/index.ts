@@ -761,7 +761,7 @@ ${prompt || ""}`;
         keywords,
         model,
         temperature: 0.7,
-        max_tokens: 4000, // 减少token上限以避免速率限制
+        max_tokens: 8196, // 减少token上限以避免速率限制
         // 移除outputFormat和jsonSchema参数
       });
 
