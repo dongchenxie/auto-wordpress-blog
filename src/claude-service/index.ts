@@ -14,7 +14,7 @@ export interface ClaudeRequestConfig {
   max_tokens?: number;
 
   // 输出格式控制
-  outputFormat?: "text" | "json";
+  outputFormat?: "text" | "json" | "html"; // 添加html选项
   jsonSchema?: Record<string, any>;
 
   // 新增：允许从外部传入系统提示
@@ -86,7 +86,20 @@ export const generateContent = async (
       const openai = new OpenAI(baseOptions);
 
       // 构建系统提示
-      let finalSystemPrompt = customSystemPrompt || ""; // 使用自定义系统提示(如果提供)
+      let finalSystemPrompt = customSystemPrompt || "";
+
+      // 根据输出格式添加明确的格式指令
+      if (
+        outputFormat === "html" &&
+        !finalSystemPrompt.includes("FORMAT: HTML")
+      ) {
+        finalSystemPrompt = "FORMAT: HTML\n\n" + finalSystemPrompt;
+      } else if (
+        outputFormat === "json" &&
+        !finalSystemPrompt.includes("FORMAT: JSON")
+      ) {
+        finalSystemPrompt = "FORMAT: JSON\n\n" + finalSystemPrompt;
+      }
 
       // 构建用户提示
       let finalUserPrompt = prompt;
@@ -98,6 +111,7 @@ export const generateContent = async (
           "Please follow the instructions in the system prompt.";
       }
 
+      // 构建请求配置
       const requestConfig = {
         model: model,
         messages: [
@@ -108,12 +122,20 @@ export const generateContent = async (
         ] as any,
         temperature: temperature,
         max_tokens: max_tokens,
+        // 修改响应格式控制，确保HTML输出正确
+        response_format:
+          outputFormat === "json"
+            ? { type: "json" }
+            : outputFormat === "html"
+            ? ({ type: "text" } as any) // Claude API 不直接支持HTML类型，但我们在系统提示中已指定
+            : ({ type: "text" } as any),
       };
 
       logger.info("Sending request to Claude API", {
         model,
         finalSystemPrompt: finalSystemPrompt,
         finalUserPrompt: finalUserPrompt,
+        outputFormat: outputFormat,
       });
 
       // 发送API请求
@@ -121,6 +143,17 @@ export const generateContent = async (
 
       // 处理返回结果
       const content = response.choices[0]?.message?.content || "";
+
+      // 检查内容格式是否符合预期
+      if (
+        outputFormat === "html" &&
+        content.startsWith("#") &&
+        !content.startsWith("<")
+      ) {
+        logger.warn(
+          "Received Markdown format instead of HTML, content may need conversion"
+        );
+      }
 
       return content;
     } catch (error) {
