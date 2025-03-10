@@ -737,8 +737,8 @@ Strict exclusions:
         jsonSchema: contentSchema,
         model,
         temperature: 1,
-        max_tokens: 64000, // 减少最大token数，但保持足够生成内容
-        think: { type: "enabled", budget_tokens: 60000 },
+        max_tokens: 10000, // 减少最大token数，但保持足够生成内容
+        think: { type: "enabled", budget_tokens: 2000 },
       });
 
       logger.info("Content generation successful", {
