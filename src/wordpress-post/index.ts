@@ -761,9 +761,11 @@ ${prompt ? `<p>Additional context: ${prompt}</p>` : ""}
     logger.info("WordPress post data prepared", {
       title: postData.title,
       slug: postData.slug,
-      categoryCount: categoryIds.length,
-      tagCount: tagIds.length,
-      contentLength: postData.content.length,
+      categorys: postData.categories,
+      tags: postData.tags,
+      content: postData.content,
+      excerpt: postData.excerpt,
+      focusKeyword: postData.rank_math_focus_keyword,
     });
 
     return postData;
