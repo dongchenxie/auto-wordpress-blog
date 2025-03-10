@@ -522,101 +522,6 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
   }
 };
 
-// 定义内容策略模板，包含关键词占位符
-const metadataPrompt = `
-CONTENT STRATEGY REQUIREMENTS
-Primary Focus: Generate comprehensive, research-based blog content strategy
-Main Keyword: {PRIMARY_KEYWORD} (must be incorporated naturally throughout)
-Secondary Keywords: {SECONDARY_KEYWORDS}
-Content Goal: Position FishingFusion.com as an authoritative resource on fishing equipment
-DELIVERABLE REQUIREMENTS
-Topic Selection: Identify a specific, search-optimized topic related to {PRIMARY_KEYWORD}
-Detailed Outline: Provide structured H2/H3 sections encompassing all critical aspects of the topic
-Comprehensive Metadata Package: Include all SEO elements specified below
-METADATA SPECIFICATIONS
-SEO Title: Create compelling title with:
-- Main keyword {PRIMARY_KEYWORD} positioned near beginning
-- Inclusion of a specific number (e.g., "7 Best", "5 Ways", etc.)
-- Incorporation of power words for click-through optimization
-- Maximum 60 characters for optimal display
-Blog Categories: Recommend 1-2 appropriate WordPress categories
-SEO Slug: Create concise, keyword-rich URL segment:
-- Must include main keyword {PRIMARY_KEYWORD}
-- Exclude stop words (a, the, and, etc.)
-- Use hyphens as word separators
-- Maximum 5-6 words total
-SEO-Optimized Tags: Provide 5-8 relevant tags:
-- Present as comma-separated list
-- Include primary and secondary keywords
-- Target specific search terms users might employ
-Compelling Excerpt: Create 150-160 character summary that:
-- Incorporates main keyword naturally
-- Highlights key value proposition of the content
-- Contains clear call-to-action element
-Focus Keywords: Identify 3-5 primary terms to optimize for:
-- Present as comma-separated list
-- Lead with {PRIMARY_KEYWORD} as primary term
-- Include terms with high search volume and moderate competition
-IMPLEMENTATION REQUIREMENTS
-Keyword Integration: Ensure primary keyword appears in:
-- SEO title (near beginning)
-- Meta description
-- URL slug
-- H1 heading
-- First paragraph of content
-Alignment Verification: Confirm all metadata elements work together cohesively and support the same search intent
-The complete package should provide all necessary metadata components for immediate implementation into WordPress or similar CMS systems for maximum search visibility.
-`;
-const contentPrompt = `
-WEBSITE & AUDIENCE INFORMATION
-
-Store: FishingFusion.com
-Industry: Fishing equipment and related products
-Target Audience: English-speaking fishing enthusiasts (both beginners and professionals)
-Content Purpose: Attract organic traffic through informative, authoritative content that establishes credibility and encourages store exploration
-
-CONTENT SPECIFICATIONS
-
-Primary Keyword: {PRIMARY_KEYWORD} (target density: 1%)
-Secondary Keywords: Include high-search-volume fishing-related terms (target density: 0.5% each)
-Word Count: Approximately 3,000 words
-Format: Well-structured HTML with proper heading hierarchy
-Content Type: Educational, problem-solving, science-based content
-
-REQUIRED STRUCTURAL ELEMENTS
-
-Key Takeaways: Begin article with summary of main points
-Table of Contents: Include for easy navigation with anchor links
-Introduction: Establish topic relevance and outline article scope
-Comparison Table: Include near beginning of article for visual reference
-Main Content Sections: Use logical H2/H3 organization with primary/secondary keywords
-FAQ Section: Minimum 5 questions addressing common reader concerns
-Conclusion: Summarize key insights and provide actionable recommendations
-References: APA-style citation list
-
-QUALITY REQUIREMENTS
-
-Research Quality: Use credible academic sources, reputable fishing websites, and current statistics
-Writing Style: Professional yet accessible to both enthusiasts and experts
-Technical Accuracy: Ensure all fishing information is factually correct
-Outbound Links: Include links to authoritative external sources
-Internal Links: Suggest relevant product categories from FishingFusion.com where appropriate
-Visuals: Include comparison table and suggest other potential visual elements
-
-HTML IMPLEMENTATION
-
-Structure: Implement proper H1, H2, H3 tags for SEO optimization
-Formatting: Use appropriate paragraph breaks, bullet points, and emphasis elements
-Responsive Design: Ensure content is mobile-friendly
-
-SEO ENHANCEMENT GUIDELINES
-
-Incorporate keywords naturally without keyword stuffing
-Use semantic variations of keywords
-Include schema markup recommendations where relevant
-
-The blog should position FishingFusion.com as an authoritative resource on fishing equipment while naturally guiding readers toward product exploration and purchase consideration.
-`;
 /**
  * 生成完整的WordPress文章，处理类别、标签、特色图片等
  * 拆分为两个并行API请求以提高效率
@@ -648,52 +553,10 @@ export async function generateCompleteWordPressPost(
 
     // 2. 准备关键词替换
     const primaryKeyword = keywords[0];
-    const secondaryKeywords = keywords.slice(1).join(", ");
 
     // 3. 替换关键词占位符
-    const basecontentPrompt = contentPrompt
-      .replace(/\n/g, "")
-      .replace(/\{PRIMARY_KEYWORD\}/g, primaryKeyword)
-      .replace(/\{SECONDARY_KEYWORDS\}/g, secondaryKeywords);
-    const basemetadataPrompt = metadataPrompt
-      .replace(/\n/g, "")
-      .replace(/\{PRIMARY_KEYWORD\}/g, primaryKeyword)
-      .replace(/\{SECONDARY_KEYWORDS\}/g, secondaryKeywords);
-
-    // 可能添加用户自定义提示
-    const contentprompt =
-      `Generate 3000-word HTML5 article wrapped in <html> tags with:
-<article>
-  <!-- Required elements -->
-  [Key sections with H2/H3]
-  [Data table] 
-  [FAQ]
-  [Academic refs]
-</article>
-
-SEO requirements:
-- Primary keyword: {PRIMARY_KEYWORD} (1%)
-- Secondaries: {SECONDARY_KEYWORDS} (0.5% each)
-
-Output format:
-{"content":"<html>...</html>"}
-
-Strict exclusions:
-- Metadata 
-- Markdown
-- Explanatory text`
-        .replace(/\n/g, "")
-        .replace(/\{PRIMARY_KEYWORD\}/g, primaryKeyword)
-        .replace(/\{SECONDARY_KEYWORDS\}/g, secondaryKeywords);
-    const finalPrompt = prompt
-      ? basecontentPrompt + prompt
-      : basecontentPrompt + contentprompt;
 
     // 4. 定义两个不同的JSON输出结构
-    const contentSchema = {
-      content: "string",
-    };
-
     const metadataSchema = {
       slug: "string",
       title: "string",
@@ -707,11 +570,14 @@ Strict exclusions:
     let metadataResult: any = {};
     let contentResult: any = {};
 
+    const metadataPrompt = `I have a fishing online wordpress store,url is https://fishingfusion.com/主要是是做fishing产品以及各类相关产品. Remember in this conversation, my store potienal customers are english speakers,Be written in high-quality English, suitable for both enthusiasts and professionals.Think and write one comprehensive, detailed, and academically rigorous blog post topic and outline with main keyword ${primaryKeyword}, and other keywords with high search volume and many people willing to know about it.After the main content, please provide: an SEO blog title with power words containing a number,Blog categories,SEO slug,SEO-optimized tags (comma-separated) , and A compelling excerpt Focus keywords (comma-separated).use Focus Keyword in the SEO Title,Focus Keyword used inside SEO Meta Description,Focus Keyword used in the URL.`;
+
     try {
       // 首先获取元数据（较小的请求）
       logger.info("Generating metadata...");
       metadataResult = await generateContent({
-        prompt: `${basemetadataPrompt}\nlimit 200-words Generate SEO metadata (slug, title, excerpt, categories, tags, focus_keywords) without main content.`,
+        prompt: "",
+        systemPrompt: metadataPrompt,
         keywords,
         outputFormat: "json",
         jsonSchema: metadataSchema,
@@ -732,44 +598,20 @@ Strict exclusions:
       logger.info("Generating content...");
 
       // 修改提示词，不再要求JSON格式输出
-      const conversationalPrompt = `${primaryKeyword} Article Creation Request:
-
-PRIMARY KEYWORD: ${primaryKeyword}
-SECONDARY KEYWORDS: ${secondaryKeywords}
-
-Please write a comprehensive, well-structured HTML article about ${primaryKeyword}. 
-The article should include:
-
-1. An engaging introduction explaining the importance of ${primaryKeyword}
-2. Multiple H2 and H3 sections covering all important aspects
-3. A comparison table of different ${primaryKeyword} options
-4. Practical tips and recommendations
-5. A FAQ section with at least 5 common questions
-6. A conclusion summarizing the key points
-
-Format the article with proper HTML tags (<h1>, <h2>, <h3>, <p>, <table>, etc.). 
-Make the content informative, accurate, and helpful for fishing enthusiasts.
-
-WORD COUNT: Aim for approximately 3,000 words total.
-TONE: Professional but accessible to both beginners and experts.
-
-${prompt || ""}`;
+      const contentPrompt = `give me the whole blog post of with the main keyword ${primaryKeyword}.Please write about 3000 words and in well-designed html.I need longer writing for SEO optimization purposes. The main keyword density is aimed at around 1%, and other keywords should be 0.5%.Be extensively researched and include in-text citations from real and credible academic sources,websites and news. Provide deep insights into the topic. a Key Takeaways section at the beginning. Include a table of contents at the beginning for easy navigation. Discuss the topic comprehensively, covering all major aspects. Include a comprehensive FAQ section (at least 5 questions) addressing common concerns. Provide a full APA-style reference list with clickable links to sources. Incorporate relevant examples, case studies, and statistics to support key points. Include at least one well-designed visual table( Put the table more toward the front) in the writing to help people understand better, such as a comparison table. Be written in high-quality English, suitable for both enthusiasts and professionals. Include outbound links to reputable external resources for additional information. Be significantly longer and more detailed than a typical blog post, aiming for a comprehensive guide on the topic.Be written in HTML format, promoting trust and encouraging customers to continue shopping and reading on my website. Structure the blog with proper HTML heading tags like <h1>, <h2>, and <h3> to ensure good readability and organization. Incorporate an appealing design by suggesting CSS styling that enhances user experience and visual comfort.`;
 
       // 改为对话模式生成内容
       contentResult = await generateContent({
-        prompt: conversationalPrompt,
+        prompt: "",
+        systemPrompt: contentPrompt,
         keywords,
         model,
         temperature: 0.7,
-        max_tokens: 8196, // 减少token上限以避免速率限制
-        // 移除outputFormat和jsonSchema参数
+        max_tokens: 8196,
       });
 
       logger.info("Content generation successful", {
-        contentLength:
-          typeof contentResult === "string"
-            ? contentResult.length
-            : contentResult?.content?.length || 0,
+        contentResult: contentResult,
       });
 
       // 处理对话模式的响应 (不再作为JSON解析)
@@ -789,15 +631,6 @@ ${prompt || ""}`;
           <p>Keywords: ${keywords.join(", ")}</p>
           ${prompt ? `<p>Additional information: ${prompt}</p>` : ""}
         `;
-      }
-
-      // 检查内容是否只有HTML片段而没有包含在<html>标签中
-      if (
-        !articleContent.includes("<html") &&
-        !articleContent.includes("<!DOCTYPE")
-      ) {
-        // 添加基本HTML结构
-        articleContent = `<div class="article-content">${articleContent}</div>`;
       }
     } catch (error) {
       // 错误处理，检查是否为速率限制错误
@@ -854,7 +687,7 @@ ${prompt ? `<p>Additional context: ${prompt}</p>` : ""}
 
     // 6. 合并两个API请求的结果
     const generatedContent = {
-      content: (contentResult as any).content,
+      content: contentResult as any,
       slug: (metadataResult as any).slug,
       title: (metadataResult as any).title,
       excerpt: (metadataResult as any).excerpt,
