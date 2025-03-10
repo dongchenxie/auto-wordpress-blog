@@ -92,79 +92,217 @@ IMPORTANT: Always complete your responses fully. Ensure all sections mentioned i
     // 是否使用流式输出
     const useStreaming = !outputFormat || outputFormat !== "json";
 
-    if (useStreaming) {
-      // 使用流式API调用收集完整内容
-      logger.info("Using streaming API for complete content");
+    try {
+      if (useStreaming) {
+        // 使用流式API调用收集完整内容
+        logger.info("Using streaming API for complete content");
 
-      const stream = await openai.chat.completions.create({
-        model: model,
-        messages: [
-          ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
-          { role: "user", content: finalPrompt },
-        ] as any,
-        temperature: temperature,
-        // 设置较大的max_tokens值以确保完整输出
-        max_tokens: max_tokens || 10000,
-        stream: true,
-      });
+        try {
+          // 添加Anthropic API版本头
+          const baseOptions = {
+            apiKey: apiKey,
+            baseURL: "https://api.anthropic.com/v1/",
+            defaultHeaders: {
+              "anthropic-version": "2023-06-01",
+            },
+          };
 
-      // 收集流式响应内容
-      let fullContent = "";
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || "";
-        fullContent += content;
+          const openai = new OpenAI(baseOptions);
+
+          // 先尝试非流式调用，避免兼容性问题
+          const response = await openai.chat.completions.create({
+            model: model,
+            messages: [
+              ...(systemPrompt
+                ? [{ role: "system", content: systemPrompt }]
+                : []),
+              { role: "user", content: finalPrompt },
+            ] as any,
+            temperature: temperature,
+            max_tokens: max_tokens || 4000, // 降低token数量
+          });
+
+          // 处理收集到的内容
+          const fullContent = response.choices[0].message.content || "";
+
+          logger.info("Content generation completed", {
+            contentLength: fullContent.length,
+            isHtml: fullContent.includes("<"),
+          });
+
+          // 处理收集到的内容
+          if (!fullContent.includes("<")) {
+            // 非HTML内容
+            return {
+              content: fullContent,
+              title: keywords
+                ? `About: ${keywords.join(", ")}`
+                : "Generated Content",
+            };
+          }
+
+          // 返回HTML内容
+          return fullContent;
+        } catch (streamError) {
+          // 流式调用失败，记录错误
+          logger.warn(
+            "Streaming API request failed, falling back to standard request",
+            {
+              error:
+                streamError instanceof Error
+                  ? streamError.message
+                  : String(streamError),
+            }
+          );
+
+          // 重新创建客户端，移除流式设置
+          const openai = new OpenAI({
+            apiKey: apiKey,
+            baseURL: "https://api.anthropic.com/v1/",
+            defaultHeaders: {
+              "anthropic-version": "2023-06-01",
+            },
+          });
+
+          // 尝试常规API调用
+          const response = await openai.chat.completions.create({
+            model: model,
+            messages: [
+              ...(systemPrompt
+                ? [{ role: "system", content: systemPrompt }]
+                : []),
+              { role: "user", content: finalPrompt },
+            ] as any,
+            temperature: temperature,
+            max_tokens: max_tokens || 4000,
+          });
+
+          const content = response.choices[0].message.content || "";
+
+          if (!content.includes("<")) {
+            return {
+              content: content,
+              title: keywords
+                ? `About: ${keywords.join(", ")}`
+                : "Generated Content",
+            };
+          }
+
+          return content;
+        }
+      } else {
+        // JSON输出模式 - 使用常规API调用
+        const openai = new OpenAI({
+          apiKey: apiKey,
+          baseURL: "https://api.anthropic.com/v1/",
+          defaultHeaders: {
+            "anthropic-version": "2023-06-01",
+          },
+        });
+
+        const response = await openai.chat.completions.create({
+          model: model,
+          messages: [
+            ...(systemPrompt
+              ? [{ role: "system", content: systemPrompt }]
+              : []),
+            { role: "user", content: finalPrompt },
+          ] as any,
+          temperature: temperature,
+          max_tokens: max_tokens || 4000,
+        });
+
+        // 处理返回结果
+        const content = response.choices[0].message.content || "";
+
+        if (outputFormat === "json") {
+          try {
+            // 解析JSON响应
+            const jsonResponse = JSON.parse(content);
+            return jsonResponse;
+          } catch (parseError) {
+            logger.error("Failed to parse JSON response", {
+              parseError:
+                parseError instanceof Error
+                  ? parseError.message
+                  : String(parseError),
+              rawContent: content.substring(0, 200) + "...",
+            });
+
+            // 返回解析错误信息和原始内容
+            return {
+              parseError: "Failed to parse JSON",
+              rawContent: content,
+            };
+          }
+        }
+
+        // 非JSON格式，返回文本内容
+        if (!content.includes("<")) {
+          return {
+            content: content,
+            title: keywords
+              ? `About: ${keywords.join(", ")}`
+              : "Generated Content",
+          };
+        }
+
+        return content;
       }
+    } catch (apiError) {
+      // 处理API错误
+      logger.error(
+        "API request failed, trying one more time with simpler parameters",
+        {
+          error:
+            apiError instanceof Error ? apiError.message : String(apiError),
+        }
+      );
 
-      logger.info("Content streaming completed", {
-        contentLength: fullContent.length,
-        isHtml: fullContent.includes("<"),
-      });
+      // 最终尝试：使用最简单的参数
+      try {
+        const openai = new OpenAI({
+          apiKey: apiKey,
+          baseURL: "https://api.anthropic.com/v1/",
+          defaultHeaders: {
+            "anthropic-version": "2023-06-01",
+          },
+        });
 
-      // 处理收集到的内容
-      if (!fullContent.includes("<")) {
-        // 非HTML内容
+        // 简化提示词，减少token
+        const simplifiedPrompt = `${keywords.join(
+          ", "
+        )}. ${finalPrompt.substring(0, 500)}...`;
+
+        const response = await openai.chat.completions.create({
+          model: model,
+          messages: [{ role: "user", content: simplifiedPrompt }],
+          temperature: 0.7,
+          max_tokens: 2000,
+        });
+
+        const content = response.choices[0].message.content || "";
+
         return {
-          content: fullContent,
+          content: content,
           title: keywords
             ? `About: ${keywords.join(", ")}`
             : "Generated Content",
+          simplified: true,
         };
-      }
-
-      // 返回HTML内容
-      return fullContent;
-    } else {
-      // JSON输出模式 - 使用常规API调用
-      const response = await openai.chat.completions.create({
-        model: model,
-        messages: [
-          ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
-          { role: "user", content: finalPrompt },
-        ] as any,
-        temperature: temperature,
-        max_tokens: max_tokens || 4000,
-      });
-
-      // 处理返回结果
-      const content = response.choices[0].message.content || "";
-
-      try {
-        // 解析JSON响应
-        const jsonResponse = JSON.parse(content);
-        return jsonResponse;
-      } catch (parseError) {
-        logger.error("Failed to parse JSON response", {
-          parseError:
-            parseError instanceof Error
-              ? parseError.message
-              : String(parseError),
-          rawContent: content.substring(0, 200) + "...",
+      } catch (finalError) {
+        logger.error("All API attempts failed", {
+          error:
+            finalError instanceof Error
+              ? finalError.message
+              : String(finalError),
         });
 
-        // 返回解析错误信息和原始内容
+        // 返回备用内容
         return {
-          parseError: "Failed to parse JSON",
-          rawContent: content,
+          error: "API service unavailable",
+          content: `<p>Content generation service is currently unavailable. Please try again later.</p>
+<p>Keywords: ${keywords ? keywords.join(", ") : "None provided"}</p>`,
         };
       }
     }
