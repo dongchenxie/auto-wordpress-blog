@@ -10,6 +10,7 @@ export interface ClaudeRequestConfig {
   model?: string;
   outputFormat?: "text" | "json"; // 新增：输出格式选项
   jsonSchema?: Record<string, any>; // 新增：期望的JSON结构
+  max_tokens?: number;
 }
 
 // Claude响应接口
@@ -37,6 +38,7 @@ export const generateContent = async (
       model = "claude-3-haiku-20240307",
       outputFormat = "json",
       jsonSchema,
+      max_tokens = 4000,
     } = config;
 
     // 优先使用传入的API密钥，其次使用环境变量中的API密钥
@@ -98,6 +100,7 @@ Do not include any markdown formatting, code blocks, or text outside the JSON st
           : []),
         { role: "user", content: finalPrompt },
       ] as any,
+      max_tokens: max_tokens,
     };
 
     logger.info("Calling openai.chat.completions.create with params", {

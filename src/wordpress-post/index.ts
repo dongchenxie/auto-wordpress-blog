@@ -626,23 +626,26 @@ export async function generateCompleteWordPressPost(
 
     // 5. 并行调用Claude API生成内容和元数据
     const [contentResult, metadataResult] = await Promise.all([
-      // 内容生成请求 - 更多的tokens用于详细内容
-      generateContent({
-        prompt: `${finalPrompt}\nGenerate detailed article content. Only return the main article body without any metadata (slug, title, excerpt, categories, tags, focus_keywords).`,
-        keywords,
-        outputFormat: "json",
-        jsonSchema: contentSchema,
-        model,
-      }),
-
       // 元数据生成请求
       generateContent({
-        prompt: `${finalPrompt}\nGenerate SEO metadata (slug, title, excerpt, categories, tags, focus_keywords) without main content.`,
+        prompt: `${finalPrompt}\nlimit 200-wrods Generate SEO metadata (slug, title, excerpt, categories, tags, focus_keywords) without main content.`,
         keywords,
         outputFormat: "json",
         jsonSchema: metadataSchema,
         model,
         temperature: 0.5,
+        max_tokens: 300,
+      }),
+
+      // 内容生成请求 - 更多的tokens用于详细内容
+      generateContent({
+        prompt: `${finalPrompt}\n limit 3000-wrods Generate detailed article content. Only return the main article body without any metadata (slug, title, excerpt, categories, tags, focus_keywords).`,
+        keywords,
+        outputFormat: "json",
+        jsonSchema: contentSchema,
+        model,
+        temperature: 0.5,
+        max_tokens: 4000,
       }),
     ]);
 
