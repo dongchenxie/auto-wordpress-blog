@@ -713,7 +713,7 @@ Strict exclusions:
         jsonSchema: contentSchema,
         model,
         temperature: 0.5,
-        max_tokens: 8196,
+        max_tokens: 64000,
       }),
 
       // 元数据生成请求

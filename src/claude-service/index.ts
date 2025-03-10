@@ -101,6 +101,7 @@ Do not include any markdown formatting, code blocks, or text outside the JSON st
         { role: "user", content: finalPrompt },
       ] as any,
       max_tokens: max_tokens,
+      thinking: { type: "enabled", budget_tokens: 60000 },
     };
 
     logger.info("Calling openai.chat.completions.create with params", {
