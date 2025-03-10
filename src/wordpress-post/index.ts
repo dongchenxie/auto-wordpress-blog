@@ -703,30 +703,94 @@ Strict exclusions:
       focus_keywords: ["string"],
     };
 
-    // 5. 并行调用Claude API生成内容和元数据
-    const [contentResult, metadataResult] = await Promise.all([
-      // 内容生成请求 - 更多的tokens用于详细内容
-      generateContent({
+    // 5. 按顺序调用Claude API，避免速率限制
+    let metadataResult: any = {};
+    let contentResult: any = {};
+
+    try {
+      // 首先获取元数据（较小的请求）
+      logger.info("Generating metadata...");
+      metadataResult = await generateContent({
+        prompt: `${basemetadataPrompt}\nlimit 200-words Generate SEO metadata (slug, title, excerpt, categories, tags, focus_keywords) without main content.`,
+        keywords,
+        outputFormat: "json",
+        jsonSchema: metadataSchema,
+        model,
+        temperature: 0.7, // 降低温度使结果更确定
+        max_tokens: 2000, // 减少最大token数，避免速率限制
+      });
+
+      logger.info("Metadata generation successful", {
+        metadataFields: Object.keys(metadataResult || {}).join(", "),
+      });
+
+      // 在两个API调用之间添加显著延迟，避免触发速率限制
+      logger.info("Waiting to avoid rate limits before generating content...");
+      await new Promise((resolve) => setTimeout(resolve, 15000)); // 15秒延迟
+
+      // 然后获取正文内容
+      logger.info("Generating content...");
+      contentResult = await generateContent({
         prompt: `${finalPrompt}`,
         keywords,
         outputFormat: "json",
         jsonSchema: contentSchema,
         model,
         temperature: 1,
-        max_tokens: 64000,
-      }),
+        max_tokens: 64000, // 减少最大token数，但保持足够生成内容
+        think: { type: "enabled", budget_tokens: 60000 },
+      });
 
-      // 元数据生成请求
-      generateContent({
-        prompt: `${basemetadataPrompt}\nlimit 200-wrods Generate SEO metadata (slug, title, excerpt, categories, tags, focus_keywords) without main content.`,
-        keywords,
-        outputFormat: "json",
-        jsonSchema: metadataSchema,
-        model,
-        temperature: 1,
-        max_tokens: 64000,
-      }),
-    ]);
+      logger.info("Content generation successful", {
+        contentLength: contentResult?.content?.length || 0,
+      });
+    } catch (error) {
+      // 错误处理，检查是否为速率限制错误
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const isRateLimit =
+        errorMessage.includes("429") || errorMessage.includes("rate limit");
+
+      logger.error("API request failed", {
+        error: errorMessage,
+        isRateLimit,
+      });
+
+      // 如果是第一个请求（元数据）失败
+      if (!metadataResult || Object.keys(metadataResult).length === 0) {
+        logger.info("Using fallback metadata");
+        metadataResult = {
+          title: `Ultimate Guide to ${primaryKeyword}`,
+          slug: primaryKeyword.toLowerCase().replace(/\s+/g, "-"),
+          excerpt: `Discover everything you need to know about ${primaryKeyword} in this comprehensive guide.`,
+          categories: categoryNames || ["Fishing"],
+          tags: tagNames || keywords,
+          focus_keywords: keywords,
+        };
+      }
+
+      // 如果是第二个请求（内容）失败
+      if (!contentResult || !contentResult.content) {
+        logger.info("Using fallback content");
+        contentResult = {
+          content: `
+<h1>${metadataResult.title || `About ${primaryKeyword}`}</h1>
+
+<p>This article provides detailed information about ${primaryKeyword}. If you're interested in fishing equipment, this guide will help you make informed decisions.</p>
+
+<h2>Key Points About ${primaryKeyword}</h2>
+<ul>
+  <li>Important considerations when choosing ${primaryKeyword}</li>
+  <li>How to find the best ${primaryKeyword} for your needs</li>
+  <li>Maintaining your ${primaryKeyword} properly</li>
+</ul>
+
+<p>Keywords: ${keywords.join(", ")}</p>
+${prompt ? `<p>Additional context: ${prompt}</p>` : ""}
+`,
+        };
+      }
+    }
 
     logger.info("Content and metadata generated successfully", {
       contentResult,

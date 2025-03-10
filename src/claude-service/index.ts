@@ -11,6 +11,7 @@ export interface ClaudeRequestConfig {
   outputFormat?: "text" | "json"; // 新增：输出格式选项
   jsonSchema?: Record<string, any>; // 新增：期望的JSON结构
   max_tokens?: number;
+  think?: { type: "enabled"; budget_tokens: number };
 }
 
 // Claude响应接口
@@ -39,6 +40,7 @@ export const generateContent = async (
       outputFormat = "json",
       jsonSchema,
       max_tokens = 4000,
+      think,
     } = config;
 
     // 优先使用传入的API密钥，其次使用环境变量中的API密钥
@@ -101,7 +103,7 @@ Do not include any markdown formatting, code blocks, or text outside the JSON st
         { role: "user", content: finalPrompt },
       ] as any,
       max_tokens: max_tokens,
-      thinking: { type: "enabled", budget_tokens: 60000 },
+      thinking: think,
     };
 
     logger.info("Calling openai.chat.completions.create with params", {
