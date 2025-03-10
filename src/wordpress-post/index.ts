@@ -461,7 +461,7 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
         username: requestBody.username,
         password: requestBody.password,
       },
-      timeout: 10 * 60 * 1000, // 增加超时时间
+      timeout: 30000, // 增加超时时间
     };
 
     const response = await axios.post(endpoint, postData, config);
@@ -526,7 +526,7 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
 const contentStrategyPrompt = `
 CONTENT STRATEGY REQUIREMENTS
 Primary Focus: Generate comprehensive, research-based blog content strategy
-Main Keyword: "{PRIMARY_KEYWORD}" (must be incorporated naturally throughout)
+Main Keyword: {PRIMARY_KEYWORD} (must be incorporated naturally throughout)
 Secondary Keywords: {SECONDARY_KEYWORDS}
 Content Goal: Position FishingFusion.com as an authoritative resource on fishing equipment
 DELIVERABLE REQUIREMENTS
@@ -535,13 +535,13 @@ Detailed Outline: Provide structured H2/H3 sections encompassing all critical as
 Comprehensive Metadata Package: Include all SEO elements specified below
 METADATA SPECIFICATIONS
 SEO Title: Create compelling title with:
-- Main keyword "{PRIMARY_KEYWORD}" positioned near beginning
+- Main keyword {PRIMARY_KEYWORD} positioned near beginning
 - Inclusion of a specific number (e.g., "7 Best", "5 Ways", etc.)
 - Incorporation of power words for click-through optimization
 - Maximum 60 characters for optimal display
 Blog Categories: Recommend 1-2 appropriate WordPress categories
 SEO Slug: Create concise, keyword-rich URL segment:
-- Must include main keyword "{PRIMARY_KEYWORD}"
+- Must include main keyword {PRIMARY_KEYWORD}
 - Exclude stop words (a, the, and, etc.)
 - Use hyphens as word separators
 - Maximum 5-6 words total
@@ -555,7 +555,7 @@ Compelling Excerpt: Create 150-160 character summary that:
 - Contains clear call-to-action element
 Focus Keywords: Identify 3-5 primary terms to optimize for:
 - Present as comma-separated list
-- Lead with "{PRIMARY_KEYWORD}" as primary term
+- Lead with {PRIMARY_KEYWORD} as primary term
 - Include terms with high search volume and moderate competition
 IMPLEMENTATION REQUIREMENTS
 Keyword Integration: Ensure primary keyword appears in:
@@ -570,6 +570,7 @@ The complete package should provide all necessary metadata components for immedi
 
 /**
  * 生成完整的WordPress文章，处理类别、标签、特色图片等
+ * 拆分为两个并行API请求以提高效率
  */
 export async function generateCompleteWordPressPost(
   url: string,
@@ -601,41 +602,69 @@ export async function generateCompleteWordPressPost(
     const secondaryKeywords = keywords.slice(1).join(", ");
 
     // 3. 替换关键词占位符
-    let finalPrompt = contentStrategyPrompt
+    const basePrompt = contentStrategyPrompt
       .replace(/\n/g, "")
       .replace(/\{PRIMARY_KEYWORD\}/g, primaryKeyword)
       .replace(/\{SECONDARY_KEYWORDS\}/g, secondaryKeywords);
-    if (prompt) {
-      finalPrompt += prompt;
-    }
 
-    // 4. 定义符合要求的JSON输出结构
-    const jsonSchema = {
+    // 可能添加用户自定义提示
+    const finalPrompt = prompt ? basePrompt + prompt : basePrompt;
+
+    // 4. 定义两个不同的JSON输出结构
+    const contentSchema = {
+      content: "string",
+    };
+
+    const metadataSchema = {
       slug: "string",
       title: "string",
-      content: "string",
       excerpt: "string",
       categories: ["string"],
       tags: ["string"],
       focus_keywords: ["string"],
     };
 
-    // 5. 调用Claude API生成JSON格式内容
-    const generatedContent = await generateContent({
-      prompt: finalPrompt,
-      keywords,
-      outputFormat: "json",
-      jsonSchema,
-      model,
+    // 5. 并行调用Claude API生成内容和元数据
+    const [contentResult, metadataResult] = await Promise.all([
+      // 内容生成请求 - 更多的tokens用于详细内容
+      generateContent({
+        prompt: `${finalPrompt}\nGenerate detailed article content. Only return the main article body without any metadata (slug, title, excerpt, categories, tags, focus_keywords).`,
+        keywords,
+        outputFormat: "json",
+        jsonSchema: contentSchema,
+        model,
+      }),
+
+      // 元数据生成请求
+      generateContent({
+        prompt: `${finalPrompt}\nGenerate SEO metadata (slug, title, excerpt, categories, tags, focus_keywords) without main content.`,
+        keywords,
+        outputFormat: "json",
+        jsonSchema: metadataSchema,
+        model,
+        temperature: 0.5,
+      }),
+    ]);
+
+    logger.info("Content and metadata generated successfully", {
+      contentResult,
+      metadataResult,
     });
 
-    logger.info("Content generated successfully", {
-      generatedContent,
-    });
+    // 6. 合并两个API请求的结果
+    const generatedContent = {
+      content: (contentResult as any).content,
+      slug: (metadataResult as any).slug,
+      title: (metadataResult as any).title,
+      excerpt: (metadataResult as any).excerpt,
+      categories: (metadataResult as any).categories,
+      tags: (metadataResult as any).tags,
+      focus_keywords: (metadataResult as any).focus_keywords,
+    };
 
-    // 6. 处理分类
+    // 7. 处理分类
     const categoryIds: number[] = [];
-    const generatedCategories = (generatedContent as any).categories ||
+    const generatedCategories = generatedContent.categories ||
       categoryNames || ["Fishing"];
 
     for (const categoryName of generatedCategories) {
@@ -650,17 +679,15 @@ export async function generateCompleteWordPressPost(
           normalized,
           Object.keys(categoriesMap)
         );
-        logger.info(normalized, Object.keys(categoriesMap));
         if (fuzzyMatch && categoriesMap[fuzzyMatch]) {
           categoryIds.push(categoriesMap[fuzzyMatch]);
         }
       }
     }
 
-    // 7. 处理标签
+    // 8. 处理标签
     let tagIds: number[] = [];
-    const generatedTags =
-      (generatedContent as any).tags || tagNames || keywords;
+    const generatedTags = generatedContent.tags || tagNames || keywords;
 
     if (generatedTags && generatedTags.length > 0) {
       // 处理已存在的标签
@@ -685,25 +712,24 @@ export async function generateCompleteWordPressPost(
       }
     }
 
-    // 8. 查找特色图片
-    // let featuredMediaId = await findFeaturedMedia(url, auth, primaryKeyword);
-
     // 9. 构建最终的WordPress文章数据
     const postData = {
-      slug: (generatedContent as any).slug,
-      title: (generatedContent as any).title,
-      content: (generatedContent as any).content,
-      excerpt: (generatedContent as any).excerpt,
-      // featured_media: featuredMediaId,
+      slug: generatedContent.slug,
+      title: generatedContent.title,
+      content: generatedContent.content,
+      excerpt: generatedContent.excerpt,
       rank_math_focus_keyword:
-        (generatedContent as any).focus_keywords?.join(",") ||
-        keywords.join(","),
+        generatedContent.focus_keywords?.join(",") || keywords.join(","),
       categories: categoryIds,
       tags: tagIds,
     };
 
     logger.info("WordPress post data prepared", {
-      postData: postData,
+      title: postData.title,
+      slug: postData.slug,
+      categoryCount: categoryIds.length,
+      tagCount: tagIds.length,
+      contentLength: postData.content.length,
     });
 
     return postData;
@@ -813,7 +839,7 @@ function findFuzzyMatch(
     // 返回长度最接近的匹配
     return containsMatches.reduce((closest, current) =>
       Math.abs(current.length - target.length) <
-      Math.abs(closest.length - target.length)
+      Math.abs(closest.length - closest.length)
         ? current
         : closest
     );

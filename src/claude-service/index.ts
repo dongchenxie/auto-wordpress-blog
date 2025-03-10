@@ -73,7 +73,7 @@ Your output MUST be parseable by JSON.parse() and match the following schema:
 ${JSON.stringify(jsonSchema)}
 
 Do not include any markdown formatting, code blocks, or text outside the JSON structure.`;
-
+      systemPrompt = systemPrompt.replace(/\n/g, "");
       // 修改用户提示，确保它包含JSON要求
       finalPrompt = `${prompt}\n
       \nRemember to respond ONLY with valid JSON matching the required schema.`;
@@ -89,7 +89,7 @@ Do not include any markdown formatting, code blocks, or text outside the JSON st
     });
 
     // 发送请求到Claude API
-    const response = await openai.chat.completions.create({
+    const createParams = {
       model: model,
       temperature: temperature,
       messages: [
@@ -98,7 +98,13 @@ Do not include any markdown formatting, code blocks, or text outside the JSON st
           : []),
         { role: "user", content: finalPrompt },
       ] as any,
+    };
+
+    logger.info("Calling openai.chat.completions.create with params", {
+      createParams: createParams,
     });
+
+    const response = await openai.chat.completions.create(createParams);
     logger.info("received response from Claude API", {
       response: response,
     });
