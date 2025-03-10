@@ -726,7 +726,7 @@ Strict exclusions:
 
       // 在两个API调用之间添加显著延迟，避免触发速率限制
       logger.info("Waiting to avoid rate limits before generating content...");
-      await new Promise((resolve) => setTimeout(resolve, 15000)); // 15秒延迟
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
       // 然后获取正文内容
       logger.info("Generating content...");
