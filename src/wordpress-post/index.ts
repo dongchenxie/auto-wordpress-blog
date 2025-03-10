@@ -608,7 +608,33 @@ export async function generateCompleteWordPressPost(
       .replace(/\{SECONDARY_KEYWORDS\}/g, secondaryKeywords);
 
     // 可能添加用户自定义提示
-    const finalPrompt = prompt ? basePrompt + prompt : basePrompt;
+    const contentprompt =
+      `Generate 2800-word HTML5 article wrapped in <html> tags with:
+<article>
+  <!-- Required elements -->
+  [Key sections with H2/H3]
+  [Data table] 
+  [FAQ]
+  [Academic refs]
+</article>
+
+SEO requirements:
+- Primary keyword: {PRIMARY_KEYWORD} (1%)
+- Secondaries: {SECONDARY_KEYWORDS} (0.5% each)
+
+Output format:
+{"content":"<html>...</html>"}
+
+Strict exclusions:
+- Metadata 
+- Markdown
+- Explanatory text`
+        .replace(/\n/g, "")
+        .replace(/\{PRIMARY_KEYWORD\}/g, primaryKeyword)
+        .replace(/\{SECONDARY_KEYWORDS\}/g, secondaryKeywords);
+    const finalPrompt = prompt
+      ? basePrompt + prompt
+      : basePrompt + contentprompt;
 
     // 4. 定义两个不同的JSON输出结构
     const contentSchema = {
@@ -626,26 +652,26 @@ export async function generateCompleteWordPressPost(
 
     // 5. 并行调用Claude API生成内容和元数据
     const [contentResult, metadataResult] = await Promise.all([
-      // 元数据生成请求
-      generateContent({
-        prompt: `${finalPrompt}\nlimit 200-wrods Generate SEO metadata (slug, title, excerpt, categories, tags, focus_keywords) without main content.`,
-        keywords,
-        outputFormat: "json",
-        jsonSchema: metadataSchema,
-        model,
-        temperature: 0.5,
-        max_tokens: 300,
-      }),
-
       // 内容生成请求 - 更多的tokens用于详细内容
       generateContent({
-        prompt: `${finalPrompt}\n limit 3000-wrods Generate detailed article content. Only return the main article body without any metadata (slug, title, excerpt, categories, tags, focus_keywords).`,
+        prompt: `${finalPrompt}`,
         keywords,
         outputFormat: "json",
         jsonSchema: contentSchema,
         model,
         temperature: 0.5,
         max_tokens: 4000,
+      }),
+
+      // 元数据生成请求
+      generateContent({
+        prompt: `${basePrompt}\nlimit 200-wrods Generate SEO metadata (slug, title, excerpt, categories, tags, focus_keywords) without main content.`,
+        keywords,
+        outputFormat: "json",
+        jsonSchema: metadataSchema,
+        model,
+        temperature: 0.5,
+        max_tokens: 300,
       }),
     ]);
 
