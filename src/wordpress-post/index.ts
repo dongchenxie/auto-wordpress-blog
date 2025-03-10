@@ -609,7 +609,7 @@ export async function generateCompleteWordPressPost(
 
     // 可能添加用户自定义提示
     const contentprompt =
-      `Generate 2800-word HTML5 article wrapped in <html> tags with:
+      `Generate 2000-word HTML5 article wrapped in <html> tags with:
 <article>
   <!-- Required elements -->
   [Key sections with H2/H3]
