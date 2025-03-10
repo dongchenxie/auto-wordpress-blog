@@ -523,7 +523,7 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
 };
 
 // 定义内容策略模板，包含关键词占位符
-const contentStrategyPrompt = `
+const metadataPrompt = `
 CONTENT STRATEGY REQUIREMENTS
 Primary Focus: Generate comprehensive, research-based blog content strategy
 Main Keyword: {PRIMARY_KEYWORD} (must be incorporated naturally throughout)
@@ -567,7 +567,56 @@ Keyword Integration: Ensure primary keyword appears in:
 Alignment Verification: Confirm all metadata elements work together cohesively and support the same search intent
 The complete package should provide all necessary metadata components for immediate implementation into WordPress or similar CMS systems for maximum search visibility.
 `;
+const contentPrompt = `
+WEBSITE & AUDIENCE INFORMATION
 
+Store: FishingFusion.com
+Industry: Fishing equipment and related products
+Target Audience: English-speaking fishing enthusiasts (both beginners and professionals)
+Content Purpose: Attract organic traffic through informative, authoritative content that establishes credibility and encourages store exploration
+
+CONTENT SPECIFICATIONS
+
+Primary Keyword: {PRIMARY_KEYWORD} (target density: 1%)
+Secondary Keywords: Include high-search-volume fishing-related terms (target density: 0.5% each)
+Word Count: Approximately 3,000 words
+Format: Well-structured HTML with proper heading hierarchy
+Content Type: Educational, problem-solving, science-based content
+
+REQUIRED STRUCTURAL ELEMENTS
+
+Key Takeaways: Begin article with summary of main points
+Table of Contents: Include for easy navigation with anchor links
+Introduction: Establish topic relevance and outline article scope
+Comparison Table: Include near beginning of article for visual reference
+Main Content Sections: Use logical H2/H3 organization with primary/secondary keywords
+FAQ Section: Minimum 5 questions addressing common reader concerns
+Conclusion: Summarize key insights and provide actionable recommendations
+References: APA-style citation list
+
+QUALITY REQUIREMENTS
+
+Research Quality: Use credible academic sources, reputable fishing websites, and current statistics
+Writing Style: Professional yet accessible to both enthusiasts and experts
+Technical Accuracy: Ensure all fishing information is factually correct
+Outbound Links: Include links to authoritative external sources
+Internal Links: Suggest relevant product categories from FishingFusion.com where appropriate
+Visuals: Include comparison table and suggest other potential visual elements
+
+HTML IMPLEMENTATION
+
+Structure: Implement proper H1, H2, H3 tags for SEO optimization
+Formatting: Use appropriate paragraph breaks, bullet points, and emphasis elements
+Responsive Design: Ensure content is mobile-friendly
+
+SEO ENHANCEMENT GUIDELINES
+
+Incorporate keywords naturally without keyword stuffing
+Use semantic variations of keywords
+Include schema markup recommendations where relevant
+
+The blog should position FishingFusion.com as an authoritative resource on fishing equipment while naturally guiding readers toward product exploration and purchase consideration.
+`;
 /**
  * 生成完整的WordPress文章，处理类别、标签、特色图片等
  * 拆分为两个并行API请求以提高效率
@@ -602,14 +651,18 @@ export async function generateCompleteWordPressPost(
     const secondaryKeywords = keywords.slice(1).join(", ");
 
     // 3. 替换关键词占位符
-    const basePrompt = contentStrategyPrompt
+    const basecontentPrompt = contentPrompt
+      .replace(/\n/g, "")
+      .replace(/\{PRIMARY_KEYWORD\}/g, primaryKeyword)
+      .replace(/\{SECONDARY_KEYWORDS\}/g, secondaryKeywords);
+    const basemetadataPrompt = metadataPrompt
       .replace(/\n/g, "")
       .replace(/\{PRIMARY_KEYWORD\}/g, primaryKeyword)
       .replace(/\{SECONDARY_KEYWORDS\}/g, secondaryKeywords);
 
     // 可能添加用户自定义提示
     const contentprompt =
-      `Generate 2000-word HTML5 article wrapped in <html> tags with:
+      `Generate 3000-word HTML5 article wrapped in <html> tags with:
 <article>
   <!-- Required elements -->
   [Key sections with H2/H3]
@@ -633,8 +686,8 @@ Strict exclusions:
         .replace(/\{PRIMARY_KEYWORD\}/g, primaryKeyword)
         .replace(/\{SECONDARY_KEYWORDS\}/g, secondaryKeywords);
     const finalPrompt = prompt
-      ? basePrompt + prompt
-      : basePrompt + contentprompt;
+      ? basecontentPrompt + prompt
+      : basecontentPrompt + contentprompt;
 
     // 4. 定义两个不同的JSON输出结构
     const contentSchema = {
@@ -660,12 +713,12 @@ Strict exclusions:
         jsonSchema: contentSchema,
         model,
         temperature: 0.5,
-        max_tokens: 4000,
+        max_tokens: 8196,
       }),
 
       // 元数据生成请求
       generateContent({
-        prompt: `${basePrompt}\nlimit 200-wrods Generate SEO metadata (slug, title, excerpt, categories, tags, focus_keywords) without main content.`,
+        prompt: `${basemetadataPrompt}\nlimit 200-wrods Generate SEO metadata (slug, title, excerpt, categories, tags, focus_keywords) without main content.`,
         keywords,
         outputFormat: "json",
         jsonSchema: metadataSchema,
