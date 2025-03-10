@@ -712,7 +712,7 @@ Strict exclusions:
         outputFormat: "json",
         jsonSchema: contentSchema,
         model,
-        temperature: 0.5,
+        temperature: 1,
         max_tokens: 64000,
       }),
 
@@ -723,7 +723,7 @@ Strict exclusions:
         outputFormat: "json",
         jsonSchema: metadataSchema,
         model,
-        temperature: 0.5,
+        temperature: 1,
         max_tokens: 64000,
       }),
     ]);
