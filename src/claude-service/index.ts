@@ -105,9 +105,7 @@ export const generateContent = async (
       const requestConfig = {
         model: model,
         messages: [
-          ...(finalSystemPrompt
-            ? [{ role: "system", content: finalSystemPrompt }]
-            : []),
+          { role: "system", content: finalSystemPrompt },
           { role: "user", content: finalUserPrompt },
         ] as any,
         temperature: temperature,
