@@ -593,7 +593,6 @@ export async function generateCompleteWordPressPost(
       categories: ["string"],
       tags: ["string"],
       focus_keywords: ["string"],
-      outline: "string",
     };
 
     // 5. 按顺序调用Claude API，避免速率限制
@@ -624,6 +623,30 @@ export async function generateCompleteWordPressPost(
       logger.info("Metadata generation successful", {
         metadataResult: metadataResult,
       });
+
+      // 处理返回的元数据结果
+      if (typeof metadataResult === "string") {
+        try {
+          metadataResult = JSON.parse(metadataResult);
+          logger.info("Metadata JSON parsed successfully", {
+            parsedMetadata: metadataResult,
+          });
+        } catch (error) {
+          logger.error("Failed to parse metadata JSON", {
+            error: error instanceof Error ? error.message : String(error),
+            metadataResult,
+          });
+          // 如果解析失败，创建一个基本的元数据对象
+          metadataResult = {
+            title: `Ultimate Guide to ${primaryKeyword}`,
+            slug: primaryKeyword.toLowerCase().replace(/\s+/g, "-"),
+            excerpt: `Discover everything you need to know about ${primaryKeyword} in this comprehensive guide.`,
+            categories: categoryNames || ["Fishing"],
+            tags: tagNames || keywords,
+            focus_keywords: keywords,
+          };
+        }
+      }
 
       // 在两个API调用之间添加显著延迟，避免触发速率限制
       logger.info("Waiting to avoid rate limits before generating content...");
