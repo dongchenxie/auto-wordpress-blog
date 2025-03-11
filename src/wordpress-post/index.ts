@@ -610,7 +610,7 @@ export async function generateCompleteWordPressPost(
         systemPrompt: metaSystemPrompt,
         keywords,
         jsonSchema: metajson ? metadataSchema : undefined,
-        model: "claude-3-haiku-20240307",
+        model: "claude-3-5-haiku-20241022",
         temperature: 0.5,
         max_tokens: 2000,
       };

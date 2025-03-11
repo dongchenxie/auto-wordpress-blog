@@ -88,17 +88,13 @@ export const generateContent = async (
       // 如果存在jsonSchema，则构建包含schema的系统提示
       if (jsonSchema) {
         // 构建更严格的系统提示，确保JSON输出的稳定性
-        finalSystemPrompt = `You must follow these JSON output rules:
-1. Match this schema: ${JSON.stringify(jsonSchema)}
-2. Use valid JSON format
-3. Include all required fields
-4. Properly escape strings
-5. Output pure JSON only
-6. Use consistent data types
-
-Required fields: ${Object.keys(jsonSchema).join(", ")}
-
-${SystemPrompt}`;
+        finalSystemPrompt = `
+You must follow these JSON output rules:
+1. Use valid JSON format
+2. Include all required fields
+3. Output pure JSON only
+Required fields:{${Object.keys(jsonSchema).join(",")}} ${SystemPrompt}`;
+        finalSystemPrompt.replace("\n/g", " ");
       }
 
       // 构建请求配置
