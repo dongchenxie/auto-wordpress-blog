@@ -88,17 +88,15 @@ export const generateContent = async (
       // 如果存在jsonSchema，则构建包含schema的系统提示
       if (jsonSchema) {
         // 构建更严格的系统提示，确保JSON输出的稳定性
-        finalSystemPrompt = `You must strictly follow these output rules:
-1. Generate content that exactly matches the following JSON schema: ${JSON.stringify(
-          jsonSchema
-        )}
-2. Your response MUST be valid JSON format
-3. All required fields must be included
-4. String values must be properly escaped
-5. Do not include any explanation or additional text outside the JSON structure
-6. Ensure consistent data types for each field
+        finalSystemPrompt = `You must follow these JSON output rules:
+1. Match this schema: ${JSON.stringify(jsonSchema)}
+2. Use valid JSON format
+3. Include all required fields
+4. Properly escape strings
+5. Output pure JSON only
+6. Use consistent data types
 
-Current metadata fields required: ${Object.keys(jsonSchema).join(", ")}
+Required fields: ${Object.keys(jsonSchema).join(", ")}
 
 ${SystemPrompt}`;
       }
@@ -123,6 +121,54 @@ ${SystemPrompt}`;
 
       // 处理返回结果
       const content = response.choices[0]?.message?.content || "";
+
+      // 如果期望JSON输出，验证并修复JSON格式
+      if (jsonSchema && typeof content === "string") {
+        try {
+          // 尝试解析JSON
+          const jsonContent = JSON.parse(content);
+          return jsonContent;
+        } catch (jsonError) {
+          // JSON解析失败，尝试修复常见问题
+          logger.warn("JSON parsing failed, attempting to fix", {
+            error:
+              jsonError instanceof Error
+                ? jsonError.message
+                : String(jsonError),
+          });
+
+          // 修复不完整的JSON (缺少结尾括号)
+          let fixedContent = content;
+
+          // 计算开括号和闭括号的数量
+          const openBraces = (content.match(/\{/g) || []).length;
+          const closeBraces = (content.match(/\}/g) || []).length;
+
+          // 如果开括号比闭括号多，添加缺少的闭括号
+          if (openBraces > closeBraces) {
+            const missingBraces = openBraces - closeBraces;
+            fixedContent = content + "}".repeat(missingBraces);
+            logger.info("Fixed incomplete JSON by adding closing braces", {
+              missingBraces,
+            });
+
+            try {
+              // 尝试解析修复后的JSON
+              const fixedJson = JSON.parse(fixedContent);
+              return fixedJson;
+            } catch (e) {
+              // 修复失败，返回原始内容
+              logger.error("JSON repair failed", {
+                error: e instanceof Error ? e.message : String(e),
+              });
+              return content;
+            }
+          }
+
+          // 其他JSON错误，返回原始内容
+          return content;
+        }
+      }
 
       return content;
     } catch (error) {
