@@ -569,6 +569,22 @@ export async function generateCompleteWordPressPost(
     const primaryKeyword = keywords[0];
 
     // 3. 替换关键词占位符
+    // 添加替换函数，处理提示词中的关键词占位符
+    // 替换文本中的关键词占位符,仅当文本包含${primaryKeyword}时才进行替换
+    const replaceKeywordPlaceholders = (text: string | undefined): string => {
+      if (!text) return "";
+      // 检查是否包含${primaryKeyword}占位符
+      if (text.includes("${primaryKeyword}")) {
+        return text.replace(/\${primaryKeyword}/g, primaryKeyword);
+      }
+      return text;
+    };
+
+    // 替换用户提供的提示词中的占位符
+    metaUserPrompt = replaceKeywordPlaceholders(metaUserPrompt);
+    metaSystemPrompt = replaceKeywordPlaceholders(metaSystemPrompt);
+    contentUserPrompt = replaceKeywordPlaceholders(contentUserPrompt);
+    contentSystemPrompt = replaceKeywordPlaceholders(contentSystemPrompt);
 
     // 4. 定义两个不同的JSON输出结构
     const metadataSchema = {
