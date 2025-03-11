@@ -590,9 +590,8 @@ export async function generateCompleteWordPressPost(
       : `I have a fishing online wordpress store,url is https://fishingfusion.com/主要是是做fishing产品以及各类相关产品. Remember in this conversation, my store potienal customers are english speakers,Be written in high-quality English, suitable for both enthusiasts and professionals.Think and write one comprehensive, detailed, and academically rigorous blog post topic and outline with main keyword ${primaryKeyword}, and other keywords with high search volume and many people willing to know about it.After the main content, please provide: an SEO blog title with power words containing a number,Blog categories,SEO slug,SEO-optimized tags (comma-separated) , and A compelling excerpt Focus keywords (comma-separated).use Focus Keyword in the SEO Title,Focus Keyword used inside SEO Meta Description,Focus Keyword used in the URL.`;
 
     try {
-      // 首先获取元数据（较小的请求）
-      logger.info("Generating metadata...");
-      metadataResult = await generateContent({
+      // 构建配置对象
+      const config = {
         prompt: metadataUserPrompt,
         systemPrompt: metaSystemPrompt,
         keywords,
@@ -600,39 +599,43 @@ export async function generateCompleteWordPressPost(
         model,
         temperature: 0.7, // 降低温度使结果更确定
         max_tokens: 2000, // 减少最大token数，避免速率限制
-      });
+      };
+
+      // 打印配置信息
+      logger.info("Metadata generation config:", config);
+
+      metadataResult = await generateContent(config);
 
       logger.info("Metadata generation successful", {
-        metadataFields: Object.keys(metadataResult || {}).join(", "),
+        metadataResult: metadataResult,
       });
 
       // 在两个API调用之间添加显著延迟，避免触发速率限制
       logger.info("Waiting to avoid rate limits before generating content...");
       await new Promise((resolve) => setTimeout(resolve, 3000));
 
-      // 然后获取正文内容
-      logger.info("Generating content...");
-
       // 修改提示词，不再要求JSON格式输出
       const contentPrompt = contentUserPrompt
         ? contentUserPrompt
         : `give me the whole blog post of with the main keyword ${primaryKeyword}.Please write about 3000 words and in well-designed html.I need longer writing for SEO optimization purposes. The main keyword density is aimed at around 1%, and other keywords should be 0.5%.Be extensively researched and include in-text citations from real and credible academic sources,websites and news. Provide deep insights into the topic. a Key Takeaways section at the beginning. Include a table of contents at the beginning for easy navigation. Discuss the topic comprehensively, covering all major aspects. Include a comprehensive FAQ section (at least 5 questions) addressing common concerns. Provide a full APA-style reference list with clickable links to sources. Incorporate relevant examples, case studies, and statistics to support key points. Include at least one well-designed visual table( Put the table more toward the front) in the writing to help people understand better, such as a comparison table. Be written in high-quality English, suitable for both enthusiasts and professionals. Include outbound links to reputable external resources for additional information. Be significantly longer and more detailed than a typical blog post, aiming for a comprehensive guide on the topic.Be written in HTML format, promoting trust and encouraging customers to continue shopping and reading on my website. Structure the blog with proper HTML heading tags like <h1>, <h2>, and <h3> to ensure good readability and organization. Incorporate an appealing design by suggesting CSS styling that enhances user experience and visual comfort.`;
 
-      // 改为对话模式生成内容，并明确指定输出格式为HTML
-      contentResult = await generateContent({
+      // 构建内容生成配置
+      const contentConfig = {
         prompt: metainput ? contentPrompt + metadataResult : contentPrompt,
         systemPrompt: contentSystemPrompt,
         keywords,
         model,
         temperature: 0.7,
         max_tokens: 8196,
-      });
+      };
+
+      // 打印内容生成配置信息
+      logger.info("Content generation config:", contentConfig);
+
+      contentResult = await generateContent(contentConfig);
 
       logger.info("Content generation successful", {
-        contentResult:
-          typeof contentResult === "string"
-            ? contentResult.substring(0, 500)
-            : contentResult,
+        contentResult: contentResult,
       });
 
       // 处理对话模式的响应 (不再作为JSON解析)
