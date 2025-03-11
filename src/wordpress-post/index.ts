@@ -606,7 +606,7 @@ export async function generateCompleteWordPressPost(
     try {
       // 构建配置对象
       const config = {
-        prompt: metadataUserPrompt,
+        prompt: metadataUserPrompt + categoriesMap + tagsMap,
         systemPrompt: metaSystemPrompt,
         keywords,
         jsonSchema: metajson ? metadataSchema : undefined,
