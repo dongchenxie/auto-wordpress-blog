@@ -12,9 +12,6 @@ export interface ClaudeRequestConfig {
   apiKey?: string;
   model?: string;
   max_tokens?: number;
-
-  // 输出格式控制
-  outputFormat?: "text" | "json" | "html"; // 添加html选项
   jsonSchema?: Record<string, any>;
 
   // 新增：允许从外部传入系统提示
@@ -46,11 +43,11 @@ export const generateContent = async (
     apiKey: configApiKey,
     model: configModel,
     temperature = 0.7,
-    outputFormat,
     max_tokens = 4000,
     systemPrompt: customSystemPrompt,
     retryOnRateLimit = true,
     maxRetries = 2,
+    jsonSchema,
   } = config;
 
   const logger = createLogger("claude-service");
@@ -79,7 +76,6 @@ export const generateContent = async (
     try {
       logger.info(`API request attempt ${attemptCount + 1}/${maxRetries + 1}`, {
         model,
-        outputFormat: outputFormat || "text",
       });
 
       // 创建OpenAI客户端，指向Anthropic API
@@ -98,6 +94,13 @@ export const generateContent = async (
           "Please follow the instructions in the system prompt.";
       }
 
+      if (jsonSchema) {
+        finalUserPrompt =
+          `Please generate content based on the following JSON schema: ${JSON.stringify(
+            jsonSchema
+          )}.` + prompt;
+      }
+
       // 构建请求配置
       const requestConfig = {
         model: model,
@@ -109,20 +112,10 @@ export const generateContent = async (
         ] as any,
         temperature: temperature,
         max_tokens: max_tokens,
-        // 修改响应格式控制，确保HTML输出正确
-        response_format:
-          outputFormat === "json"
-            ? { type: "json" }
-            : outputFormat === "html"
-            ? ({ type: "text" } as any) // Claude API 不直接支持HTML类型，但我们在系统提示中已指定
-            : ({ type: "text" } as any),
       };
 
       logger.info("Sending request to Claude API", {
-        model,
-        finalSystemPrompt: finalSystemPrompt,
-        finalUserPrompt: finalUserPrompt,
-        outputFormat: outputFormat,
+        requestConfig: requestConfig,
       });
 
       // 发送API请求
@@ -130,17 +123,6 @@ export const generateContent = async (
 
       // 处理返回结果
       const content = response.choices[0]?.message?.content || "";
-
-      // 检查内容格式是否符合预期
-      if (
-        outputFormat === "html" &&
-        content.startsWith("#") &&
-        !content.startsWith("<")
-      ) {
-        logger.warn(
-          "Received Markdown format instead of HTML, content may need conversion"
-        );
-      }
 
       return content;
     } catch (error) {

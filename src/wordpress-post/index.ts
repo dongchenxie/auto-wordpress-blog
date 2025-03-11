@@ -11,14 +11,11 @@ interface WordPressPostRequest {
   password: string;
   keywords: string[];
 
-  prompt?: string;
-  contentPrompt?: string;
-  title?: string;
-  content?: string;
-  categories?: number[] | string[]; // 支持数字ID或字符串名称
-  tags?: number[] | string[]; // 支持数字ID或字符串名称
-  excerpt?: string;
-  meta?: Record<string, any>;
+  metaUserPrompt?: string;
+  metaSystemPrompt?: string;
+  metajson?: boolean;
+  contentUserPrompt?: string;
+  contentSystemPrompt?: string;
   status?: "publish" | "draft" | "pending" | "private";
 
   apiKey?: string;
@@ -296,96 +293,96 @@ const fetchAllTaxonomies = async (
 };
 
 // WordPress API service
-const wordPressService = {
-  createPost: async (request: WordPressPostRequest): Promise<any> => {
-    const {
-      url,
-      username,
-      password,
-      keywords,
-      prompt,
+// const wordPressService = {
+//   createPost: async (request: WordPressPostRequest): Promise<any> => {
+//     const {
+//       url,
+//       username,
+//       password,
+//       keywords,
+//       prompt,
 
-      title,
-      content,
-      categories,
-      tags,
-      excerpt,
-      meta,
-      status = "draft", // 默认为草稿
+//       title,
+//       content,
+//       categories,
+//       tags,
+//       excerpt,
+//       meta,
+//       status = "draft", // 默认为草稿
 
-      apiKey,
-      model,
-    } = request;
+//       apiKey,
+//       model,
+//     } = request;
 
-    const logger = createLogger("wordpress-post");
+//     const logger = createLogger("wordpress-post");
 
-    // 确定分类和标签的类型和处理方法
-    let categoryIds: number[] = [];
-    let tagIds: number[] = [];
+//     // 确定分类和标签的类型和处理方法
+//     let categoryIds: number[] = [];
+//     let tagIds: number[] = [];
 
-    // 处理分类
-    if (categories) {
-      if (Array.isArray(categories) && categories.length > 0) {
-        // 检查是否为字符串数组
-        if (typeof categories[0] === "string") {
-          // logger.info("Converting category names to IDs");
-          const result = await getTaxonomyIds(
-            url,
-            { username, password },
-            categories as string[],
-            undefined
-          );
-          categoryIds = result.categoryIds;
-        } else {
-          // 已经是数字ID数组
-          categoryIds = categories as number[];
-        }
-      }
-    }
+//     // 处理分类
+//     if (categories) {
+//       if (Array.isArray(categories) && categories.length > 0) {
+//         // 检查是否为字符串数组
+//         if (typeof categories[0] === "string") {
+//           // logger.info("Converting category names to IDs");
+//           const result = await getTaxonomyIds(
+//             url,
+//             { username, password },
+//             categories as string[],
+//             undefined
+//           );
+//           categoryIds = result.categoryIds;
+//         } else {
+//           // 已经是数字ID数组
+//           categoryIds = categories as number[];
+//         }
+//       }
+//     }
 
-    // 处理标签
-    if (tags) {
-      if (Array.isArray(tags) && tags.length > 0) {
-        // 检查是否为字符串数组
-        if (typeof tags[0] === "string") {
-          // logger.info("Converting tag names to IDs");
-          const result = await getTaxonomyIds(
-            url,
-            { username, password },
-            undefined,
-            tags as string[]
-          );
-          tagIds = result.tagIds;
-        } else {
-          // 已经是数字ID数组
-          tagIds = tags as number[];
-        }
-      }
-    }
+//     // 处理标签
+//     if (tags) {
+//       if (Array.isArray(tags) && tags.length > 0) {
+//         // 检查是否为字符串数组
+//         if (typeof tags[0] === "string") {
+//           // logger.info("Converting tag names to IDs");
+//           const result = await getTaxonomyIds(
+//             url,
+//             { username, password },
+//             undefined,
+//             tags as string[]
+//           );
+//           tagIds = result.tagIds;
+//         } else {
+//           // 已经是数字ID数组
+//           tagIds = tags as number[];
+//         }
+//       }
+//     }
 
-    // const tagsInput = keywords?.map((tag) => tag.trim()).filter(Boolean) || [];
+//     // const tagsInput = keywords?.map((tag) => tag.trim()).filter(Boolean) || [];
 
-    // Generate content with error handling
-    // let generatedContent;
-    // try {
-    //   generatedContent = await generateContent({
-    //     prompt,
-    //     keywords,
-    //     apiKey,
-    //     model,
-    //   });
-    // } catch (error) {
-    //   // 当内容生成失败时使用备用内容
-    //   logger.warn("Content generation failed, using fallback content");
+//     // Generate content with error handling
+//     // let generatedContent;
+//     // try {
+//     //   generatedContent = await generateContent({
+//     //     prompt,
+//     //     keywords,
+//     //     apiKey,
+//     //     model,
+//     //   });
+//     // } catch (error) {
+//     //   // 当内容生成失败时使用备用内容
+//     //   logger.warn("Content generation failed, using fallback content");
 
-    //   // 创建备用内容
-    //   generatedContent = {
-    //     title: `About: ${keywords.join(", ")}`,
-    //     content: `<p>${prompt}</p><p>Keywords: ${keywords.join(", ")}</p>`,
-    //   };
-    // }
-  },
-};
+//     //   // 创建备用内容
+//     //   generatedContent = {
+//     //     title: `About: ${keywords.join(", ")}`,
+//     //     content: `<p>${prompt}</p><p>Keywords: ${keywords.join(", ")}</p>`,
+//     //   };
+//     // }
+//   },
+// };
 
 /**
  * WordPress blog post Lambda function
@@ -447,9 +444,12 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
       requestBody.url,
       { username: requestBody.username, password: requestBody.password },
       requestBody.keywords,
-      requestBody.prompt as any,
       requestBody.model as any,
-      requestBody.contentPrompt as any
+      requestBody.metaUserPrompt as any,
+      requestBody.metaSystemPrompt as any,
+      requestBody.metajson as any,
+      requestBody.contentUserPrompt as any,
+      requestBody.contentSystemPrompt as any
     );
 
     // 添加状态
@@ -532,15 +532,22 @@ export async function generateCompleteWordPressPost(
   url: string,
   auth: { username: string; password: string },
   keywords: string[],
-  prompt?: string,
   model?: string,
-  contentPrompt?: string,
+  metaUserPrompt?: string,
+  metaSystemPrompt?: string,
+  metajson?: boolean,
+  contentUserPrompt?: string,
+  contentSystemPrompt?: string,
   categoryNames: string[] = [],
   tagNames: string[] = []
 ): Promise<any> {
   const logger = createLogger("wordpress-post-generator");
   logger.info("Generating complete WordPress post", {
-    prompt,
+    metaUserPrompt: metaUserPrompt,
+    metaSystemPrompt: metaSystemPrompt,
+    contentUserPrompt: contentUserPrompt,
+    contentSystemPrompt: contentSystemPrompt,
+    metajson: metajson,
     keywords: keywords.join(", "),
   });
 
@@ -567,23 +574,25 @@ export async function generateCompleteWordPressPost(
       categories: ["string"],
       tags: ["string"],
       focus_keywords: ["string"],
+      outline: "string",
     };
 
     // 5. 按顺序调用Claude API，避免速率限制
     let metadataResult: any = {};
     let contentResult: any = {};
 
-    const metadataPrompt = `I have a fishing online wordpress store,url is https://fishingfusion.com/主要是是做fishing产品以及各类相关产品. Remember in this conversation, my store potienal customers are english speakers,Be written in high-quality English, suitable for both enthusiasts and professionals.Think and write one comprehensive, detailed, and academically rigorous blog post topic and outline with main keyword ${primaryKeyword}, and other keywords with high search volume and many people willing to know about it.After the main content, please provide: an SEO blog title with power words containing a number,Blog categories,SEO slug,SEO-optimized tags (comma-separated) , and A compelling excerpt Focus keywords (comma-separated).use Focus Keyword in the SEO Title,Focus Keyword used inside SEO Meta Description,Focus Keyword used in the URL.`;
+    const metadataUserPrompt = metaUserPrompt
+      ? metaUserPrompt
+      : `I have a fishing online wordpress store,url is https://fishingfusion.com/主要是是做fishing产品以及各类相关产品. Remember in this conversation, my store potienal customers are english speakers,Be written in high-quality English, suitable for both enthusiasts and professionals.Think and write one comprehensive, detailed, and academically rigorous blog post topic and outline with main keyword ${primaryKeyword}, and other keywords with high search volume and many people willing to know about it.After the main content, please provide: an SEO blog title with power words containing a number,Blog categories,SEO slug,SEO-optimized tags (comma-separated) , and A compelling excerpt Focus keywords (comma-separated).use Focus Keyword in the SEO Title,Focus Keyword used inside SEO Meta Description,Focus Keyword used in the URL.`;
 
     try {
       // 首先获取元数据（较小的请求）
       logger.info("Generating metadata...");
       metadataResult = await generateContent({
-        prompt: "",
-        systemPrompt: metadataPrompt,
+        prompt: metadataUserPrompt,
+        systemPrompt: metaSystemPrompt,
         keywords,
-        outputFormat: "json",
-        jsonSchema: metadataSchema,
+        jsonSchema: metajson ? metadataSchema : undefined,
         model,
         temperature: 0.7, // 降低温度使结果更确定
         max_tokens: 2000, // 减少最大token数，避免速率限制
@@ -601,19 +610,18 @@ export async function generateCompleteWordPressPost(
       logger.info("Generating content...");
 
       // 修改提示词，不再要求JSON格式输出
-      const userPrompt = prompt
-        ? prompt
+      const contentPrompt = contentUserPrompt
+        ? contentUserPrompt
         : `give me the whole blog post of with the main keyword ${primaryKeyword}.Please write about 3000 words and in well-designed html.I need longer writing for SEO optimization purposes. The main keyword density is aimed at around 1%, and other keywords should be 0.5%.Be extensively researched and include in-text citations from real and credible academic sources,websites and news. Provide deep insights into the topic. a Key Takeaways section at the beginning. Include a table of contents at the beginning for easy navigation. Discuss the topic comprehensively, covering all major aspects. Include a comprehensive FAQ section (at least 5 questions) addressing common concerns. Provide a full APA-style reference list with clickable links to sources. Incorporate relevant examples, case studies, and statistics to support key points. Include at least one well-designed visual table( Put the table more toward the front) in the writing to help people understand better, such as a comparison table. Be written in high-quality English, suitable for both enthusiasts and professionals. Include outbound links to reputable external resources for additional information. Be significantly longer and more detailed than a typical blog post, aiming for a comprehensive guide on the topic.Be written in HTML format, promoting trust and encouraging customers to continue shopping and reading on my website. Structure the blog with proper HTML heading tags like <h1>, <h2>, and <h3> to ensure good readability and organization. Incorporate an appealing design by suggesting CSS styling that enhances user experience and visual comfort.`;
 
       // 改为对话模式生成内容，并明确指定输出格式为HTML
       contentResult = await generateContent({
-        prompt: userPrompt,
-        systemPrompt: contentPrompt,
+        prompt: contentPrompt,
+        systemPrompt: contentSystemPrompt,
         keywords,
         model,
         temperature: 0.7,
         max_tokens: 8196,
-        outputFormat: "html", // 明确指定输出格式为HTML
       });
 
       logger.info("Content generation successful", {
@@ -680,7 +688,6 @@ export async function generateCompleteWordPressPost(
           <h1>${primaryKeyword}</h1>
           <p>This is an article about ${primaryKeyword}.</p>
           <p>Keywords: ${keywords.join(", ")}</p>
-          ${prompt ? `<p>Additional information: ${prompt}</p>` : ""}
         `;
       }
     } catch (error) {
@@ -725,7 +732,6 @@ export async function generateCompleteWordPressPost(
 </ul>
 
 <p>Keywords: ${keywords.join(", ")}</p>
-${prompt ? `<p>Additional context: ${prompt}</p>` : ""}
 `,
         };
       }
