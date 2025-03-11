@@ -16,6 +16,7 @@ interface WordPressPostRequest {
   metajson?: boolean;
   contentUserPrompt?: string;
   contentSystemPrompt?: string;
+  metainput?: boolean;
   status?: "publish" | "draft" | "pending" | "private";
 
   apiKey?: string;
@@ -449,7 +450,8 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
       requestBody.metaSystemPrompt as any,
       requestBody.metajson as any,
       requestBody.contentUserPrompt as any,
-      requestBody.contentSystemPrompt as any
+      requestBody.contentSystemPrompt as any,
+      requestBody.metainput as any
     );
 
     // 添加状态
@@ -537,6 +539,7 @@ export async function generateCompleteWordPressPost(
   metaSystemPrompt?: string,
   metajson?: boolean,
   contentUserPrompt?: string,
+  metainput?: boolean,
   contentSystemPrompt?: string,
   categoryNames: string[] = [],
   tagNames: string[] = []
@@ -548,6 +551,7 @@ export async function generateCompleteWordPressPost(
     contentUserPrompt: contentUserPrompt,
     contentSystemPrompt: contentSystemPrompt,
     metajson: metajson,
+    metainput: metainput,
     keywords: keywords.join(", "),
   });
 
@@ -616,7 +620,7 @@ export async function generateCompleteWordPressPost(
 
       // 改为对话模式生成内容，并明确指定输出格式为HTML
       contentResult = await generateContent({
-        prompt: contentPrompt,
+        prompt: metainput ? contentPrompt + metadataResult : contentPrompt,
         systemPrompt: contentSystemPrompt,
         keywords,
         model,
