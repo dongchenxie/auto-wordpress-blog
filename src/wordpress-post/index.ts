@@ -12,6 +12,7 @@ interface WordPressPostRequest {
   keywords: string[];
 
   prompt?: string;
+  contentPrompt?: string;
   title?: string;
   content?: string;
   categories?: number[] | string[]; // 支持数字ID或字符串名称
@@ -447,7 +448,8 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
       { username: requestBody.username, password: requestBody.password },
       requestBody.keywords,
       requestBody.prompt as any,
-      requestBody.model as any
+      requestBody.model as any,
+      requestBody.contentPrompt as any
     );
 
     // 添加状态
@@ -532,6 +534,7 @@ export async function generateCompleteWordPressPost(
   keywords: string[],
   prompt?: string,
   model?: string,
+  contentPrompt?: string,
   categoryNames: string[] = [],
   tagNames: string[] = []
 ): Promise<any> {
@@ -598,11 +601,13 @@ export async function generateCompleteWordPressPost(
       logger.info("Generating content...");
 
       // 修改提示词，不再要求JSON格式输出
-      const contentPrompt = `FORMAT: HTML\n\ngive me the whole blog post of with the main keyword ${primaryKeyword}.Please write about 3000 words and in well-designed html.I need longer writing for SEO optimization purposes. The main keyword density is aimed at around 1%, and other keywords should be 0.5%.Be extensively researched and include in-text citations from real and credible academic sources,websites and news. Provide deep insights into the topic. a Key Takeaways section at the beginning. Include a table of contents at the beginning for easy navigation. Discuss the topic comprehensively, covering all major aspects. Include a comprehensive FAQ section (at least 5 questions) addressing common concerns. Provide a full APA-style reference list with clickable links to sources. Incorporate relevant examples, case studies, and statistics to support key points. Include at least one well-designed visual table( Put the table more toward the front) in the writing to help people understand better, such as a comparison table. Be written in high-quality English, suitable for both enthusiasts and professionals. Include outbound links to reputable external resources for additional information. Be significantly longer and more detailed than a typical blog post, aiming for a comprehensive guide on the topic.Be written in HTML format, promoting trust and encouraging customers to continue shopping and reading on my website. Structure the blog with proper HTML heading tags like <h1>, <h2>, and <h3> to ensure good readability and organization. Incorporate an appealing design by suggesting CSS styling that enhances user experience and visual comfort.`;
+      const userPrompt = prompt
+        ? prompt
+        : `give me the whole blog post of with the main keyword ${primaryKeyword}.Please write about 3000 words and in well-designed html.I need longer writing for SEO optimization purposes. The main keyword density is aimed at around 1%, and other keywords should be 0.5%.Be extensively researched and include in-text citations from real and credible academic sources,websites and news. Provide deep insights into the topic. a Key Takeaways section at the beginning. Include a table of contents at the beginning for easy navigation. Discuss the topic comprehensively, covering all major aspects. Include a comprehensive FAQ section (at least 5 questions) addressing common concerns. Provide a full APA-style reference list with clickable links to sources. Incorporate relevant examples, case studies, and statistics to support key points. Include at least one well-designed visual table( Put the table more toward the front) in the writing to help people understand better, such as a comparison table. Be written in high-quality English, suitable for both enthusiasts and professionals. Include outbound links to reputable external resources for additional information. Be significantly longer and more detailed than a typical blog post, aiming for a comprehensive guide on the topic.Be written in HTML format, promoting trust and encouraging customers to continue shopping and reading on my website. Structure the blog with proper HTML heading tags like <h1>, <h2>, and <h3> to ensure good readability and organization. Incorporate an appealing design by suggesting CSS styling that enhances user experience and visual comfort.`;
 
       // 改为对话模式生成内容，并明确指定输出格式为HTML
       contentResult = await generateContent({
-        prompt: "",
+        prompt: userPrompt,
         systemPrompt: contentPrompt,
         keywords,
         model,
@@ -612,7 +617,10 @@ export async function generateCompleteWordPressPost(
       });
 
       logger.info("Content generation successful", {
-        contentResult: typeof contentResult === 'string' ? contentResult.substring(0, 500) : contentResult,
+        contentResult:
+          typeof contentResult === "string"
+            ? contentResult.substring(0, 500)
+            : contentResult,
       });
 
       // 处理对话模式的响应 (不再作为JSON解析)
@@ -621,41 +629,49 @@ export async function generateCompleteWordPressPost(
         // 如果直接返回字符串
         articleContent = contentResult;
         // 检查是否返回了Markdown格式而非HTML
-        if (articleContent.startsWith('#') && !articleContent.startsWith('<')) {
-          logger.warn("Received Markdown format instead of HTML, attempting simple conversion");
+        if (articleContent.startsWith("#") && !articleContent.startsWith("<")) {
+          logger.warn(
+            "Received Markdown format instead of HTML, attempting simple conversion"
+          );
           // 简单转换Markdown标题为HTML标题
           articleContent = articleContent
-            .replace(/^# (.*$)/gm, '<h1>$1</h1>')
-            .replace(/^## (.*$)/gm, '<h2>$1</h2>')
-            .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-            .replace(/^#### (.*$)/gm, '<h4>$1</h4>')
-            .replace(/^##### (.*$)/gm, '<h5>$1</h5>')
-            .replace(/^###### (.*$)/gm, '<h6>$1</h6>')
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/\n\n/g, '</p><p>')
-            .replace(/^\s*\n/gm, '</p><p>');
-          articleContent = '<p>' + articleContent + '</p>';
+            .replace(/^# (.*$)/gm, "<h1>$1</h1>")
+            .replace(/^## (.*$)/gm, "<h2>$1</h2>")
+            .replace(/^### (.*$)/gm, "<h3>$1</h3>")
+            .replace(/^#### (.*$)/gm, "<h4>$1</h4>")
+            .replace(/^##### (.*$)/gm, "<h5>$1</h5>")
+            .replace(/^###### (.*$)/gm, "<h6>$1</h6>")
+            .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+            .replace(/\*(.*?)\*/g, "<em>$1</em>")
+            .replace(/\n\n/g, "</p><p>")
+            .replace(/^\s*\n/gm, "</p><p>");
+          articleContent = "<p>" + articleContent + "</p>";
         }
       } else if (contentResult?.content) {
         // 如果返回对象中包含content字段
         articleContent = contentResult.content;
         // 同样检查是否为Markdown格式
-        if (typeof articleContent === 'string' && articleContent.startsWith('#') && !articleContent.startsWith('<')) {
-          logger.warn("Received Markdown format in content field instead of HTML, attempting simple conversion");
+        if (
+          typeof articleContent === "string" &&
+          articleContent.startsWith("#") &&
+          !articleContent.startsWith("<")
+        ) {
+          logger.warn(
+            "Received Markdown format in content field instead of HTML, attempting simple conversion"
+          );
           // 简单转换Markdown标题为HTML标题
           articleContent = articleContent
-            .replace(/^# (.*$)/gm, '<h1>$1</h1>')
-            .replace(/^## (.*$)/gm, '<h2>$1</h2>')
-            .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-            .replace(/^#### (.*$)/gm, '<h4>$1</h4>')
-            .replace(/^##### (.*$)/gm, '<h5>$1</h5>')
-            .replace(/^###### (.*$)/gm, '<h6>$1</h6>')
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/\n\n/g, '</p><p>')
-            .replace(/^\s*\n/gm, '</p><p>');
-          articleContent = '<p>' + articleContent + '</p>';
+            .replace(/^# (.*$)/gm, "<h1>$1</h1>")
+            .replace(/^## (.*$)/gm, "<h2>$1</h2>")
+            .replace(/^### (.*$)/gm, "<h3>$1</h3>")
+            .replace(/^#### (.*$)/gm, "<h4>$1</h4>")
+            .replace(/^##### (.*$)/gm, "<h5>$1</h5>")
+            .replace(/^###### (.*$)/gm, "<h6>$1</h6>")
+            .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+            .replace(/\*(.*?)\*/g, "<em>$1</em>")
+            .replace(/\n\n/g, "</p><p>")
+            .replace(/^\s*\n/gm, "</p><p>");
+          articleContent = "<p>" + articleContent + "</p>";
         }
       } else {
         // 无法获取内容，使用备用内容

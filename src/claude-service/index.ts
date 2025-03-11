@@ -88,19 +88,6 @@ export const generateContent = async (
       // 构建系统提示
       let finalSystemPrompt = customSystemPrompt || "";
 
-      // 根据输出格式添加明确的格式指令
-      if (
-        outputFormat === "html" &&
-        !finalSystemPrompt.includes("FORMAT: HTML")
-      ) {
-        finalSystemPrompt = "FORMAT: HTML\n\n" + finalSystemPrompt;
-      } else if (
-        outputFormat === "json" &&
-        !finalSystemPrompt.includes("FORMAT: JSON")
-      ) {
-        finalSystemPrompt = "FORMAT: JSON\n\n" + finalSystemPrompt;
-      }
-
       // 构建用户提示
       let finalUserPrompt = prompt;
 
