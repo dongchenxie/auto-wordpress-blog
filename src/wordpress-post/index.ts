@@ -2,7 +2,7 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import axios, { AxiosRequestConfig, AxiosError } from "axios";
 import { createLogger } from "./logger";
 import { generateContent } from "../claude-service";
-import { imageLoader } from "../image-service/pexels";
+import { ImageLoader, ImageResult } from "../image-service/pexels";
 
 // Request body structure definition
 interface WordPressPostRequest {
@@ -848,13 +848,31 @@ export async function generateCompleteWordPressPost(
       }
     }
 
-    const featured_media_id = await findFeaturedMedia(
-      url,
-      auth,
-      primaryKeyword
-    );
-    // if (!!featured_media_id) {
-    // }
+    let featured_media_id = await findFeaturedMedia(url, auth, primaryKeyword);
+    // 如果没有找到特色图片，尝试从Pexels获取
+    if (!featured_media_id) {
+      try {
+        logger.info(
+          "No featured image found in WordPress media library, trying Pexels"
+        );
+        // 从Pexels获取图片并上传到WordPress
+        const pexelsImageId = await uploadPexelsImageToWordPress(
+          url,
+          auth,
+          primaryKeyword
+        );
+        if (pexelsImageId) {
+          logger.info("Successfully uploaded Pexels image to WordPress", {
+            mediaId: pexelsImageId,
+          });
+          featured_media_id = pexelsImageId;
+        }
+      } catch (error) {
+        logger.error("Failed to get image from Pexels", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
     logger.info("Featured media ID:", featured_media_id);
 
     // 9. 构建最终的WordPress文章数据
@@ -954,6 +972,97 @@ async function findFeaturedMedia(
     return undefined;
   } catch (error) {
     logger.error(`Error finding featured media for: ${keyword}`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
+
+/**
+ * 从Pexels获取图片并上传到WordPress
+ */
+async function uploadPexelsImageToWordPress(
+  url: string,
+  auth: { username: string; password: string },
+  keyword: string
+): Promise<number | undefined> {
+  const logger = createLogger("pexels-image-upload");
+
+  try {
+    // 从Pexels获取图片
+    // 调用图片加载器获取图片数据
+    const imageLoader = new ImageLoader();
+    const images = await imageLoader.getImages(keyword, 2);
+
+    if (!images || images.length === 0) {
+      logger.warn("No image found on Pexels for keyword", { keyword });
+      return undefined;
+    }
+
+    const imageData = images[0];
+    const imageUrl =
+      imageData.sizes.large2x || imageData.sizes.large || imageData.url;
+    const photographer = imageData.attribution.photographer;
+
+    logger.info("Found image on Pexels", {
+      keyword,
+      imageUrl,
+      photographer,
+    });
+
+    // 下载图片
+    const imageResponse = await axios.get(imageUrl, {
+      responseType: "arraybuffer",
+    });
+
+    // 提取文件名和扩展名
+    const urlParts = imageUrl.split("/");
+    const fileName = urlParts[urlParts.length - 1];
+    const fileExt = fileName.split(".").pop() || "jpg";
+
+    // 准备上传到WordPress
+    const uploadEndpoint = `${url}/wp-json/wp/v2/media`;
+
+    // 设置上传请求
+    const uploadResponse = await axios.post(
+      uploadEndpoint,
+      imageResponse.data,
+      {
+        auth,
+        headers: {
+          "Content-Type": `image/${fileExt}`,
+          "Content-Disposition": `attachment; filename="${keyword.replace(
+            /\s+/g,
+            "-"
+          )}-${Date.now()}.${fileExt}"`,
+        },
+      }
+    );
+
+    if (uploadResponse.data && uploadResponse.data.id) {
+      // 更新媒体标题和说明，包含摄影师信息以符合Pexels的归属要求
+      const mediaId = uploadResponse.data.id;
+      const updateEndpoint = `${url}/wp-json/wp/v2/media/${mediaId}`;
+
+      await axios.post(
+        updateEndpoint,
+        {
+          title: `${keyword} - Photo by ${photographer} on Pexels`,
+          description: `Image related to ${keyword}. Photo by ${photographer} on Pexels.`,
+          alt_text: keyword,
+        },
+        { auth }
+      );
+
+      logger.info("Successfully uploaded and updated Pexels image", {
+        mediaId: mediaId,
+      });
+      return mediaId;
+    }
+
+    return undefined;
+  } catch (error) {
+    logger.error("Error uploading Pexels image to WordPress", {
       error: error instanceof Error ? error.message : String(error),
     });
     return undefined;
