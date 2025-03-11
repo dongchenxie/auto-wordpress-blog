@@ -2,7 +2,7 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import axios, { AxiosRequestConfig, AxiosError } from "axios";
 import { createLogger } from "./logger";
 import { generateContent } from "../claude-service";
-// import { imageLoader } from "../image-service/pexels";
+import { imageLoader } from "../image-service/pexels";
 
 // Request body structure definition
 interface WordPressPostRequest {
@@ -851,6 +851,15 @@ export async function generateCompleteWordPressPost(
       }
     }
 
+    const featured_media_id = await findFeaturedMedia(
+      url,
+      auth,
+      primaryKeyword
+    );
+    // if (!!featured_media_id) {
+    // }
+    logger.info("Featured media ID:", featured_media_id);
+
     // 9. 构建最终的WordPress文章数据
     const postData = {
       slug: generatedContent.slug,
@@ -861,16 +870,11 @@ export async function generateCompleteWordPressPost(
         generatedContent.focus_keywords?.join(",") || keywords.join(","),
       categories: categoryIds,
       tags: tagIds,
+      featured_media: featured_media_id,
     };
 
     logger.info("WordPress post data prepared", {
-      title: postData.title,
-      slug: postData.slug,
-      categorys: postData.categories,
-      tags: postData.tags,
-      content: postData.content,
-      excerpt: postData.excerpt,
-      focusKeyword: postData.rank_math_focus_keyword,
+      postData: postData,
     });
 
     return postData;
