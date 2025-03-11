@@ -569,7 +569,6 @@ export async function generateCompleteWordPressPost(
     const primaryKeyword = keywords[0];
 
     // 3. 替换关键词占位符
-    // 添加替换函数，处理提示词中的关键词占位符
     // 替换文本中的关键词占位符,仅当文本包含${primaryKeyword}时才进行替换
     const replaceKeywordPlaceholders = (text: string | undefined): string => {
       if (!text) return "";
@@ -612,9 +611,9 @@ export async function generateCompleteWordPressPost(
         systemPrompt: metaSystemPrompt,
         keywords,
         jsonSchema: metajson ? metadataSchema : undefined,
-        model,
-        temperature: 0.7, // 降低温度使结果更确定
-        max_tokens: 2000, // 减少最大token数，避免速率限制
+        model: "claude-3-haiku-20240307",
+        temperature: 0.5,
+        max_tokens: 2000,
       };
 
       // 打印配置信息

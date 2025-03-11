@@ -84,18 +84,30 @@ export const generateContent = async (
       // 构建用户提示
       let finalUserPrompt = prompt;
 
+      let finalSystemPrompt = SystemPrompt;
+      // 如果存在jsonSchema，则构建包含schema的系统提示
       if (jsonSchema) {
-        finalUserPrompt =
-          `Please generate content based on the following JSON schema: ${JSON.stringify(
-            jsonSchema
-          )}.` + prompt;
+        // 构建更严格的系统提示，确保JSON输出的稳定性
+        finalSystemPrompt = `You must strictly follow these output rules:
+1. Generate content that exactly matches the following JSON schema: ${JSON.stringify(
+          jsonSchema
+        )}
+2. Your response MUST be valid JSON format
+3. All required fields must be included
+4. String values must be properly escaped
+5. Do not include any explanation or additional text outside the JSON structure
+6. Ensure consistent data types for each field
+
+Current metadata fields required: ${Object.keys(jsonSchema).join(", ")}
+
+${SystemPrompt}`;
       }
 
       // 构建请求配置
       const requestConfig = {
         model: model,
         messages: [
-          { role: "system", content: SystemPrompt },
+          { role: "system", content: finalSystemPrompt },
           { role: "user", content: finalUserPrompt },
         ] as any,
         temperature: temperature,
