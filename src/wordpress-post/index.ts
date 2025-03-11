@@ -539,8 +539,8 @@ export async function generateCompleteWordPressPost(
   metaSystemPrompt?: string,
   metajson?: boolean,
   contentUserPrompt?: string,
-  metainput?: boolean,
   contentSystemPrompt?: string,
+  metainput?: boolean,
   categoryNames: string[] = [],
   tagNames: string[] = []
 ): Promise<any> {

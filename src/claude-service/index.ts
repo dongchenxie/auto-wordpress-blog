@@ -44,7 +44,7 @@ export const generateContent = async (
     model: configModel,
     temperature = 0.7,
     max_tokens = 4000,
-    systemPrompt: customSystemPrompt,
+    systemPrompt: SystemPrompt,
     retryOnRateLimit = true,
     maxRetries = 2,
     jsonSchema,
@@ -81,18 +81,8 @@ export const generateContent = async (
       // 创建OpenAI客户端，指向Anthropic API
       const openai = new OpenAI(baseOptions);
 
-      // 构建系统提示
-      let finalSystemPrompt = customSystemPrompt || "";
-
       // 构建用户提示
       let finalUserPrompt = prompt;
-
-      // 创建请求配置
-      // 如果prompt为空，则只使用systemPrompt
-      if (!finalUserPrompt && finalSystemPrompt) {
-        finalUserPrompt =
-          "Please follow the instructions in the system prompt.";
-      }
 
       if (jsonSchema) {
         finalUserPrompt =
@@ -105,7 +95,7 @@ export const generateContent = async (
       const requestConfig = {
         model: model,
         messages: [
-          { role: "system", content: finalSystemPrompt },
+          { role: "system", content: SystemPrompt },
           { role: "user", content: finalUserPrompt },
         ] as any,
         temperature: temperature,
