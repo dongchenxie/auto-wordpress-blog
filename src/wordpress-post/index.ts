@@ -593,6 +593,7 @@ export async function generateCompleteWordPressPost(
       categories: ["string"],
       tags: ["string"],
       focus_keywords: ["string"],
+      image_keywords: ["string"],
     };
 
     // 5. 按顺序调用Claude API，避免速率限制
@@ -601,7 +602,7 @@ export async function generateCompleteWordPressPost(
 
     const metadataUserPrompt = metaUserPrompt
       ? metaUserPrompt
-      : `I have a fishing online wordpress store,url is https://fishingfusion.com/主要是是做fishing产品以及各类相关产品. Remember in this conversation, my store potienal customers are english speakers,Be written in high-quality English, suitable for both enthusiasts and professionals.Think and write one comprehensive, detailed, and academically rigorous blog post topic and outline with main keyword ${primaryKeyword}, and other keywords with high search volume and many people willing to know about it.After the main content, please provide: an SEO blog title with power words containing a number,Blog categories,SEO slug,SEO-optimized tags (comma-separated) , and A compelling excerpt Focus keywords (comma-separated).use Focus Keyword in the SEO Title,Focus Keyword used inside SEO Meta Description,Focus Keyword used in the URL.`;
+      : `I have a fishing online wordpress store,url is https://fishingfusion.com/主要是是做fishing产品以及各类相关产品. Remember in this conversation, my store potienal customers are english speakers,Be written in high-quality English, suitable for both enthusiasts and professionals.Think and write one comprehensive, detailed, and academically rigorous blog post topic and outline with main keyword ${primaryKeyword}, and other keywords with high search volume and many people willing to know about it.After the main content, please provide: an SEO blog title with power words containing a number,Blog categories,SEO slug,SEO-optimized tags (comma-separated) ,3 precise image_search_keywords for image API (be short and specific) and A compelling excerpt Focus keywords (comma-separated).use Focus Keyword in the SEO Title,Focus Keyword used inside SEO Meta Description,Focus Keyword used in the URL.`;
 
     try {
       // 构建配置对象
@@ -796,6 +797,7 @@ export async function generateCompleteWordPressPost(
       categories: (metadataResult as any).categories,
       tags: (metadataResult as any).tags,
       focus_keywords: (metadataResult as any).focus_keywords,
+      image_keywords: (metadataResult as any).image_keywords,
     };
 
     // 7. 处理分类
@@ -853,34 +855,207 @@ export async function generateCompleteWordPressPost(
       }
     }
 
-    let featured_media_id = await findFeaturedMedia(url, auth, primaryKeyword);
-    // 如果没有找到特色图片，尝试从Pexels获取
-    if (!featured_media_id) {
-      try {
-        logger.info(
-          "No featured image found in WordPress media library, trying Pexels"
-        );
-        // 从Pexels获取图片并上传到WordPress
-        const pexelsImageId = await uploadPexelsImageToWordPress(
-          url,
-          auth,
-          primaryKeyword
-        );
-        if (pexelsImageId) {
-          logger.info("Successfully uploaded Pexels image to WordPress", {
-            mediaId: pexelsImageId,
-          });
-          featured_media_id = pexelsImageId;
+    // 9. 从Pexels获取图片并插入到文章内容中
+    try {
+      // 获取Pexels图片 - 使用image_keywords数组中的关键词
+      const imageLoader = new ImageLoader();
+
+      // 使用image_keywords数组或回退到主关键词
+      let imageKeywords = generatedContent.image_keywords || [primaryKeyword];
+
+      // 确保imageKeywords是数组
+      if (!Array.isArray(imageKeywords)) {
+        if (typeof imageKeywords === "string") {
+          // 如果是逗号分隔的字符串，拆分为数组
+          imageKeywords = imageKeywords.split(",").map((k) => k.trim());
+        } else {
+          // 如果不是数组也不是字符串，使用主关键词
+          imageKeywords = [primaryKeyword];
         }
-      } catch (error) {
-        logger.error("Failed to get image from Pexels", {
-          error: error instanceof Error ? error.message : String(error),
+      }
+
+      logger.info("Using image keywords for search", { imageKeywords });
+
+      // 随机打乱关键词顺序
+      const shuffledKeywords = [...imageKeywords].sort(
+        () => Math.random() - 0.5
+      );
+
+      // 为每个关键词获取图片，最多获取3张
+      const allImages: ImageResult[] = [];
+
+      // 为每个关键词获取图片
+      for (const keyword of shuffledKeywords) {
+        try {
+          const images = await imageLoader.getImages(keyword, 2);
+          if (images && images.length > 0) {
+            allImages.push(...images);
+            logger.info(
+              `Found ${images.length} images for keyword: ${keyword}`
+            );
+          }
+        } catch (error) {
+          logger.warn(`Failed to get images for keyword: ${keyword}`, {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      // 如果没有找到图片，尝试使用主关键词
+      if (allImages.length === 0 && !imageKeywords.includes(primaryKeyword)) {
+        try {
+          const images = await imageLoader.getImages(primaryKeyword, 2);
+          if (images && images.length > 0) {
+            allImages.push(...images);
+            logger.info(
+              `Found ${images.length} images for primary keyword: ${primaryKeyword}`
+            );
+          }
+        } catch (error) {
+          logger.warn(
+            `Failed to get images for primary keyword: ${primaryKeyword}`,
+            {
+              error: error instanceof Error ? error.message : String(error),
+            }
+          );
+        }
+      }
+
+      // 随机打乱所有获取的图片
+      const shuffledImages = [...allImages].sort(() => Math.random() - 0.5);
+
+      if (shuffledImages.length > 0) {
+        // 在内容中查找所有可能的插入位置
+        let content = generatedContent.content;
+
+        // 查找所有标题标签结束位置
+        const headingEndPositions = [];
+        const headingRegex = /<\/h[1-4]>/gi;
+        let match;
+
+        while ((match = headingRegex.exec(content)) !== null) {
+          headingEndPositions.push({
+            index: match.index,
+            length: match[0].length,
+          });
+        }
+
+        // 如果找到了标题标签
+        if (headingEndPositions.length > 0) {
+          // 随机选择最多2个不同的位置插入图片
+          const maxInserts = Math.min(
+            2,
+            shuffledImages.length,
+            headingEndPositions.length
+          );
+          const selectedPositions = [
+            ...Array(headingEndPositions.length).keys(),
+          ]
+            .sort(() => Math.random() - 0.5)
+            .slice(0, maxInserts);
+
+          // 按照位置从后向前插入，避免位置偏移问题
+          selectedPositions.sort((a, b) => b - a);
+
+          for (let i = 0; i < selectedPositions.length; i++) {
+            const posIndex = selectedPositions[i];
+            const pos = headingEndPositions[posIndex];
+            const imageData = shuffledImages[i];
+
+            // 获取图片URL和摄影师信息
+            const imageUrl =
+              imageData.sizes.large2x || imageData.sizes.large || imageData.url;
+            const photographer = imageData.attribution.photographer;
+            const keyword = shuffledKeywords[i % shuffledKeywords.length];
+
+            // 构建图片HTML标签，包含必要的属性和Pexels归属信息
+            const imgHtml = `
+    <figure class="wp-block-image">
+      <img src="${imageUrl}" alt="${keyword}" class="wp-image"/>
+      <figcaption>Photo by ${photographer} on Pexels</figcaption>
+    </figure>`;
+
+            // 插入图片
+            const insertPosition = pos.index + pos.length;
+            content =
+              content.slice(0, insertPosition) +
+              imgHtml +
+              content.slice(insertPosition);
+
+            logger.info(
+              `Successfully inserted Pexels image ${i + 1} into content`,
+              {
+                keyword,
+                imageUrl,
+                position: insertPosition,
+              }
+            );
+          }
+
+          // 更新内容
+          generatedContent.content = content;
+        } else {
+          // 如果没找到标题标签，在内容开头插入第一张图片
+          const imageData = shuffledImages[0];
+          const imageUrl =
+            imageData.sizes.large2x || imageData.sizes.large || imageData.url;
+          const photographer = imageData.attribution.photographer;
+          const keyword = shuffledKeywords[0];
+
+          const imgHtml = `
+    <figure class="wp-block-image">
+      <img src="${imageUrl}" alt="${keyword}" class="wp-image"/>
+      <figcaption>Photo by ${photographer} on Pexels</figcaption>
+    </figure>`;
+
+          generatedContent.content = imgHtml + content;
+
+          logger.info("Inserted Pexels image at the beginning of content", {
+            keyword,
+            imageUrl,
+          });
+        }
+      } else {
+        logger.warn("No images found on Pexels for any of the keywords", {
+          imageKeywords,
+          primaryKeyword,
         });
       }
+    } catch (error) {
+      logger.error("Failed to insert Pexels images into content", {
+        error: error instanceof Error ? error.message : String(error),
+        keyword: primaryKeyword,
+      });
     }
-    logger.info("Featured media ID:", featured_media_id);
 
-    // 9. 构建最终的WordPress文章数据
+    // let featured_media_id = await findFeaturedMedia(url, auth, primaryKeyword);
+    // // 如果没有找到特色图片，尝试从Pexels获取
+    // if (!featured_media_id) {
+    //   try {
+    //     logger.info(
+    //       "No featured image found in WordPress media library, trying Pexels"
+    //     );
+    //     // 从Pexels获取图片并上传到WordPress
+    //     const pexelsImageId = await uploadPexelsImageToWordPress(
+    //       url,
+    //       auth,
+    //       primaryKeyword
+    //     );
+    //     if (pexelsImageId) {
+    //       logger.info("Successfully uploaded Pexels image to WordPress", {
+    //         mediaId: pexelsImageId,
+    //       });
+    //       featured_media_id = pexelsImageId;
+    //     }
+    //   } catch (error) {
+    //     logger.error("Failed to get image from Pexels", {
+    //       error: error instanceof Error ? error.message : String(error),
+    //     });
+    //   }
+    // }
+    // logger.info("Featured media ID:", featured_media_id);
+
+    // 构建最终的WordPress文章数据
     const postData = {
       slug: generatedContent.slug,
       title: generatedContent.title,
@@ -890,7 +1065,7 @@ export async function generateCompleteWordPressPost(
         generatedContent.focus_keywords?.join(",") || keywords.join(","),
       categories: categoryIds,
       tags: tagIds,
-      featured_media: featured_media_id,
+      // featured_media: featured_media_id,
     };
 
     logger.info("WordPress post data prepared", {
