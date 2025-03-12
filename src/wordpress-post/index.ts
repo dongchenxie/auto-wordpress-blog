@@ -823,7 +823,12 @@ export async function generateCompleteWordPressPost(
 
     // 8. 处理标签
     let tagIds: number[] = [];
-    const generatedTags = generatedContent.tags || tagNames || keywords;
+    let generatedTags = generatedContent.tags || tagNames || keywords;
+
+    // 处理 tags 可能是字符串的情况
+    if (typeof generatedTags === "string") {
+      generatedTags = generatedTags.split(",").map((tag) => tag.trim());
+    }
 
     if (generatedTags && generatedTags.length > 0) {
       // 处理已存在的标签
