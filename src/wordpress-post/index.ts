@@ -1,4 +1,4 @@
-import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+import { APIGatewayProxyResult } from "aws-lambda";
 import axios, { AxiosRequestConfig, AxiosError } from "axios";
 import { createLogger } from "./logger";
 import { generateContent } from "../claude-service";
@@ -18,6 +18,7 @@ interface WordPressPostRequest {
   contentSystemPrompt?: string;
   metainput?: boolean;
   img_endword?: string;
+  img_num?: number;
   status?: "publish" | "draft" | "pending" | "private";
 
   apiKey?: string;
@@ -316,81 +317,6 @@ const fetchAllTaxonomies = async (
 //       model,
 //     } = request;
 
-//     const logger = createLogger("wordpress-post");
-
-//     // 确定分类和标签的类型和处理方法
-//     let categoryIds: number[] = [];
-//     let tagIds: number[] = [];
-
-//     // 处理分类
-//     if (categories) {
-//       if (Array.isArray(categories) && categories.length > 0) {
-//         // 检查是否为字符串数组
-//         if (typeof categories[0] === "string") {
-//           // logger.info("Converting category names to IDs");
-//           const result = await getTaxonomyIds(
-//             url,
-//             { username, password },
-//             categories as string[],
-//             undefined
-//           );
-//           categoryIds = result.categoryIds;
-//         } else {
-//           // 已经是数字ID数组
-//           categoryIds = categories as number[];
-//         }
-//       }
-//     }
-
-//     // 处理标签
-//     if (tags) {
-//       if (Array.isArray(tags) && tags.length > 0) {
-//         // 检查是否为字符串数组
-//         if (typeof tags[0] === "string") {
-//           // logger.info("Converting tag names to IDs");
-//           const result = await getTaxonomyIds(
-//             url,
-//             { username, password },
-//             undefined,
-//             tags as string[]
-//           );
-//           tagIds = result.tagIds;
-//         } else {
-//           // 已经是数字ID数组
-//           tagIds = tags as number[];
-//         }
-//       }
-//     }
-
-//     // const tagsInput = keywords?.map((tag) => tag.trim()).filter(Boolean) || [];
-
-//     // Generate content with error handling
-//     // let generatedContent;
-//     // try {
-//     //   generatedContent = await generateContent({
-//     //     prompt,
-//     //     keywords,
-//     //     apiKey,
-//     //     model,
-//     //   });
-//     // } catch (error) {
-//     //   // 当内容生成失败时使用备用内容
-//     //   logger.warn("Content generation failed, using fallback content");
-
-//     //   // 创建备用内容
-//     //   generatedContent = {
-//     //     title: `About: ${keywords.join(", ")}`,
-//     //     content: `<p>${prompt}</p><p>Keywords: ${keywords.join(", ")}</p>`,
-//     //   };
-//     // }
-//   },
-// };
-
-/**
- * WordPress blog post Lambda function
- * Receives a request containing WordPress URL, authentication information, and content
- * Automatically publishes the article and returns the article ID and link
- */
 export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
   const logger = createLogger("wordpress-post", event);
   try {
@@ -453,7 +379,8 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
       requestBody.contentUserPrompt as any,
       requestBody.contentSystemPrompt as any,
       requestBody.metainput as any,
-      requestBody.img_endword as any
+      requestBody.img_endword as any,
+      requestBody.img_num as any
     );
 
     // 添加状态
@@ -544,6 +471,7 @@ export async function generateCompleteWordPressPost(
   contentSystemPrompt?: string,
   metainput?: boolean,
   img_endword?: string,
+  img_num?: number,
   categoryNames: string[] = [],
   tagNames: string[] = []
 ): Promise<any> {
@@ -872,6 +800,7 @@ export async function generateCompleteWordPressPost(
         imageKeywords = [primaryKeyword];
       }
     }
+    let final_img_num = img_num ? img_num : 3;
     try {
       // 获取Pexels图片 - 使用image_keywords数组中的关键词
       const imageLoader = new ImageLoader();
@@ -889,7 +818,7 @@ export async function generateCompleteWordPressPost(
       // 为每个关键词获取图片
       for (const keyword of shuffledKeywords) {
         try {
-          const images = await imageLoader.getImages(keyword, 2);
+          const images = await imageLoader.getImages(keyword, final_img_num);
           if (images && images.length > 0) {
             allImages.push(...images);
             logger.info(
@@ -946,7 +875,7 @@ export async function generateCompleteWordPressPost(
         if (headingEndPositions.length > 0) {
           // 随机选择最多2个不同的位置插入图片
           const maxInserts = Math.min(
-            2,
+            final_img_num,
             shuffledImages.length,
             headingEndPositions.length
           );
@@ -1039,30 +968,6 @@ export async function generateCompleteWordPressPost(
       auth,
       featured_image_keywords
     );
-    // 如果没有找到特色图片，尝试从Pexels获取
-    // if (!featured_media_id) {
-    // try {
-    //   logger.info(
-    //     "No featured image found in WordPress media library, trying Pexels"
-    //   );
-    //   // 从Pexels获取图片并上传到WordPress
-    //   const pexelsImageId = await uploadPexelsImageToWordPress(
-    //     url,
-    //     auth,
-    //     primaryKeyword
-    //   );
-    //   if (pexelsImageId) {
-    //     logger.info("Successfully uploaded Pexels image to WordPress", {
-    //       mediaId: pexelsImageId,
-    //     });
-    //     featured_media_id = pexelsImageId;
-    //   }
-    // } catch (error) {
-    //   logger.error("Failed to get image from Pexels", {
-    //     error: error instanceof Error ? error.message : String(error),
-    //   });
-    // }
-    // }
     logger.info("Featured media ID:", featured_media_id);
 
     // 构建最终的WordPress文章数据
@@ -1188,97 +1093,6 @@ async function findFeaturedMedia(
     return undefined;
   } catch (error) {
     logger.error(`Error finding featured media for: ${keyword}`, {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return undefined;
-  }
-}
-
-/**
- * 从Pexels获取图片并上传到WordPress
- */
-async function uploadPexelsImageToWordPress(
-  url: string,
-  auth: { username: string; password: string },
-  keyword: string
-): Promise<number | undefined> {
-  const logger = createLogger("pexels-image-upload");
-
-  try {
-    // 从Pexels获取图片
-    // 调用图片加载器获取图片数据
-    const imageLoader = new ImageLoader();
-    const images = await imageLoader.getImages(keyword, 2);
-
-    if (!images || images.length === 0) {
-      logger.warn("No image found on Pexels for keyword", { keyword });
-      return undefined;
-    }
-
-    const imageData = images[0];
-    const imageUrl =
-      imageData.sizes.large2x || imageData.sizes.large || imageData.url;
-    const photographer = imageData.attribution.photographer;
-
-    logger.info("Found image on Pexels", {
-      keyword,
-      imageUrl,
-      photographer,
-    });
-
-    // 下载图片
-    const imageResponse = await axios.get(imageUrl, {
-      responseType: "arraybuffer",
-    });
-
-    // 提取文件名和扩展名
-    const urlParts = imageUrl.split("/");
-    const fileName = urlParts[urlParts.length - 1];
-    const fileExt = fileName.split(".").pop() || "jpg";
-
-    // 准备上传到WordPress
-    const uploadEndpoint = `${url}/wp-json/wp/v2/media`;
-
-    // 设置上传请求
-    const uploadResponse = await axios.post(
-      uploadEndpoint,
-      imageResponse.data,
-      {
-        auth,
-        headers: {
-          "Content-Type": `image/${fileExt}`,
-          "Content-Disposition": `attachment; filename="${keyword.replace(
-            /\s+/g,
-            "-"
-          )}-${Date.now()}.${fileExt}"`,
-        },
-      }
-    );
-
-    if (uploadResponse.data && uploadResponse.data.id) {
-      // 更新媒体标题和说明，包含摄影师信息以符合Pexels的归属要求
-      const mediaId = uploadResponse.data.id;
-      const updateEndpoint = `${url}/wp-json/wp/v2/media/${mediaId}`;
-
-      await axios.post(
-        updateEndpoint,
-        {
-          title: `${keyword} - Photo by ${photographer} on Pexels`,
-          description: `Image related to ${keyword}. Photo by ${photographer} on Pexels.`,
-          alt_text: keyword,
-        },
-        { auth }
-      );
-
-      logger.info("Successfully uploaded and updated Pexels image", {
-        mediaId: mediaId,
-      });
-      return mediaId;
-    }
-
-    return undefined;
-  } catch (error) {
-    logger.error("Error uploading Pexels image to WordPress", {
       error: error instanceof Error ? error.message : String(error),
     });
     return undefined;
