@@ -74,9 +74,9 @@ export const generateContent = async (
 
   while (attemptCount <= maxRetries) {
     try {
-      logger.info(`API request attempt ${attemptCount + 1}/${maxRetries + 1}`, {
-        model,
-      });
+      // logger.info(`API request attempt ${attemptCount + 1}/${maxRetries + 1}`, {
+      //   model,
+      // });
 
       // 创建OpenAI客户端，指向Anthropic API
       const openai = new OpenAI(baseOptions);

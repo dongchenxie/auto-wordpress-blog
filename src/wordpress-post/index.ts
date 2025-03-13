@@ -17,6 +17,7 @@ interface WordPressPostRequest {
   contentUserPrompt?: string;
   contentSystemPrompt?: string;
   metainput?: boolean;
+  img_endword?: string;
   status?: "publish" | "draft" | "pending" | "private";
 
   apiKey?: string;
@@ -439,7 +440,7 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
       return createErrorResponse(validationError, 400);
     }
 
-    logger.info("Using complete blog generation feature");
+    // logger.info("Using complete blog generation feature");
 
     const postData = await generateCompleteWordPressPost(
       requestBody.url,
@@ -451,7 +452,8 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
       requestBody.metajson as any,
       requestBody.contentUserPrompt as any,
       requestBody.contentSystemPrompt as any,
-      requestBody.metainput as any
+      requestBody.metainput as any,
+      requestBody.img_endword as any
     );
 
     // 添加状态
@@ -541,19 +543,20 @@ export async function generateCompleteWordPressPost(
   contentUserPrompt?: string,
   contentSystemPrompt?: string,
   metainput?: boolean,
+  img_endword?: string,
   categoryNames: string[] = [],
   tagNames: string[] = []
 ): Promise<any> {
   const logger = createLogger("wordpress-post-generator");
-  logger.info("Generating complete WordPress post", {
-    metaUserPrompt: metaUserPrompt,
-    metaSystemPrompt: metaSystemPrompt,
-    contentUserPrompt: contentUserPrompt,
-    contentSystemPrompt: contentSystemPrompt,
-    metajson: metajson,
-    metainput: metainput,
-    keywords: keywords.join(", "),
-  });
+  // logger.info("Generating complete WordPress post", {
+  //   metaUserPrompt: metaUserPrompt,
+  //   metaSystemPrompt: metaSystemPrompt,
+  //   contentUserPrompt: contentUserPrompt,
+  //   contentSystemPrompt: contentSystemPrompt,
+  //   metajson: metajson,
+  //   metainput: metainput,
+  //   keywords: keywords.join(", "),
+  // });
 
   try {
     // 1. 获取所有分类和标签
@@ -650,7 +653,7 @@ export async function generateCompleteWordPressPost(
       }
 
       // 在两个API调用之间添加显著延迟，避免触发速率限制
-      logger.info("Waiting to avoid rate limits before generating content...");
+      // logger.info("Waiting to avoid rate limits before generating content...");
       await new Promise((resolve) => setTimeout(resolve, 3000));
 
       // 修改提示词，不再要求JSON格式输出
@@ -673,9 +676,9 @@ export async function generateCompleteWordPressPost(
 
       contentResult = await generateContent(contentConfig);
 
-      logger.info("Content generation successful", {
-        contentResult: contentResult,
-      });
+      // logger.info("Content generation successful", {
+      //   contentResult: contentResult,
+      // });
 
       // 处理对话模式的响应 (不再作为JSON解析)
       let articleContent = "";
@@ -856,23 +859,22 @@ export async function generateCompleteWordPressPost(
     }
 
     // 9. 从Pexels获取图片并插入到文章内容中
+    // 使用image_keywords数组或回退到主关键词
+    let imageKeywords = generatedContent.image_keywords || [primaryKeyword];
+
+    // 确保imageKeywords是数组
+    if (!Array.isArray(imageKeywords)) {
+      if (typeof imageKeywords === "string") {
+        // 如果是逗号分隔的字符串，拆分为数组
+        imageKeywords = imageKeywords.split(",").map((k) => k.trim());
+      } else {
+        // 如果不是数组也不是字符串，使用主关键词
+        imageKeywords = [primaryKeyword];
+      }
+    }
     try {
       // 获取Pexels图片 - 使用image_keywords数组中的关键词
       const imageLoader = new ImageLoader();
-
-      // 使用image_keywords数组或回退到主关键词
-      let imageKeywords = generatedContent.image_keywords || [primaryKeyword];
-
-      // 确保imageKeywords是数组
-      if (!Array.isArray(imageKeywords)) {
-        if (typeof imageKeywords === "string") {
-          // 如果是逗号分隔的字符串，拆分为数组
-          imageKeywords = imageKeywords.split(",").map((k) => k.trim());
-        } else {
-          // 如果不是数组也不是字符串，使用主关键词
-          imageKeywords = [primaryKeyword];
-        }
-      }
 
       logger.info("Using image keywords for search", { imageKeywords });
 
@@ -1028,32 +1030,40 @@ export async function generateCompleteWordPressPost(
       });
     }
 
-    // let featured_media_id = await findFeaturedMedia(url, auth, primaryKeyword);
-    // // 如果没有找到特色图片，尝试从Pexels获取
+    // 处理image_keywords,确保其为字符串数组格式
+    let featured_image_keywords: string[] = [];
+    featured_image_keywords = [...imageKeywords, img_endword];
+
+    let featured_media_id = await findFeaturedMedia(
+      url,
+      auth,
+      featured_image_keywords
+    );
+    // 如果没有找到特色图片，尝试从Pexels获取
     // if (!featured_media_id) {
-    //   try {
-    //     logger.info(
-    //       "No featured image found in WordPress media library, trying Pexels"
-    //     );
-    //     // 从Pexels获取图片并上传到WordPress
-    //     const pexelsImageId = await uploadPexelsImageToWordPress(
-    //       url,
-    //       auth,
-    //       primaryKeyword
-    //     );
-    //     if (pexelsImageId) {
-    //       logger.info("Successfully uploaded Pexels image to WordPress", {
-    //         mediaId: pexelsImageId,
-    //       });
-    //       featured_media_id = pexelsImageId;
-    //     }
-    //   } catch (error) {
-    //     logger.error("Failed to get image from Pexels", {
-    //       error: error instanceof Error ? error.message : String(error),
+    // try {
+    //   logger.info(
+    //     "No featured image found in WordPress media library, trying Pexels"
+    //   );
+    //   // 从Pexels获取图片并上传到WordPress
+    //   const pexelsImageId = await uploadPexelsImageToWordPress(
+    //     url,
+    //     auth,
+    //     primaryKeyword
+    //   );
+    //   if (pexelsImageId) {
+    //     logger.info("Successfully uploaded Pexels image to WordPress", {
+    //       mediaId: pexelsImageId,
     //     });
+    //     featured_media_id = pexelsImageId;
     //   }
+    // } catch (error) {
+    //   logger.error("Failed to get image from Pexels", {
+    //     error: error instanceof Error ? error.message : String(error),
+    //   });
     // }
-    // logger.info("Featured media ID:", featured_media_id);
+    // }
+    logger.info("Featured media ID:", featured_media_id);
 
     // 构建最终的WordPress文章数据
     const postData = {
@@ -1065,7 +1075,7 @@ export async function generateCompleteWordPressPost(
         generatedContent.focus_keywords?.join(",") || keywords.join(","),
       categories: categoryIds,
       tags: tagIds,
-      // featured_media: featured_media_id,
+      featured_media: featured_media_id,
     };
 
     logger.info("WordPress post data prepared", {
@@ -1121,34 +1131,60 @@ async function createNewTags(
 async function findFeaturedMedia(
   url: string,
   auth: { username: string; password: string },
-  keyword: string
+  keyword: string[]
 ): Promise<number | undefined> {
   const logger = createLogger("wordpress-media");
 
   try {
-    // 搜索媒体库中的图片
-    const searchTerm = encodeURIComponent(keyword);
-    const endpoint = `${url}/wp-json/wp/v2/media?search=${searchTerm}&media_type=image&per_page=1`;
+    // 收集所有关键词搜索到的图片
+    const allMedia: Array<{ id: number; title: string }> = [];
 
-    const response = await axios.get(endpoint, {
-      auth,
-      timeout: 10000,
-    });
+    // 按顺序遍历关键词数组搜索图片
+    for (const kw of keyword) {
+      const searchTerm = encodeURIComponent(kw);
 
-    if (response.data && response.data.length > 0) {
-      logger.info(`Found matching media for keyword: ${keyword}`, {
-        mediaId: response.data[0].id,
+      // 使用不同的排序参数进行多次搜索以增加随机性
+      const orderParams = [
+        { orderby: "date", order: "desc" },
+        { orderby: "date", order: "asc" },
+        { orderby: "modified", order: "desc" },
+        { orderby: "modified", order: "asc" },
+      ];
+
+      // 随机选择一个排序参数
+      const randomParam =
+        orderParams[Math.floor(Math.random() * orderParams.length)];
+
+      const endpoint = `${url}/wp-json/wp/v2/media?search=${searchTerm}&media_type=image&per_page=100&orderby=${randomParam.orderby}&order=${randomParam.order}`;
+
+      const response = await axios.get(endpoint, {
+        auth,
+        timeout: 10000,
       });
-      return response.data[0].id;
+
+      if (response.data && response.data.length > 0) {
+        // 将搜索结果添加到总集合中
+        allMedia.push(
+          ...response.data.map((item: any) => ({
+            id: item.id,
+            title: item.title?.rendered || "",
+          }))
+        );
+      }
     }
 
-    // 如果没找到，尝试只使用关键词的一部分
-    if (keyword.includes(" ")) {
-      const firstWord = keyword.split(" ")[0];
-      return findFeaturedMedia(url, auth, firstWord);
-    }
+    if (allMedia.length > 0) {
+      // 随机选择一张图片
+      const randomIndex = Math.floor(Math.random() * allMedia.length);
+      const selectedMedia = allMedia[randomIndex];
 
-    logger.info(`No matching media found for keyword: ${keyword}`);
+      logger.info(`Selected random media from ${allMedia.length} results`, {
+        mediaId: selectedMedia.id,
+        mediaTitle: selectedMedia.title,
+      });
+      return selectedMedia.id;
+    }
+    logger.warn(`No matching media found for keyword: ${keyword}`);
     return undefined;
   } catch (error) {
     logger.error(`Error finding featured media for: ${keyword}`, {
