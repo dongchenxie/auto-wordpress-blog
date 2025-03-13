@@ -1,4 +1,4 @@
-![image](https://github.com/user-attachments/assets/0ff78786-d919-4041-9cb0-47a06a5b0a92)# WordPress Post Lambda Function
+# WordPress Post Lambda Function
 
 A TypeScript AWS Lambda function that automatically creates posts on a WordPress site.
 
@@ -119,10 +119,10 @@ function register_rank_math_focus_keyword_meta() {
 add_action( 'init', 'register_rank_math_focus_keyword_meta' );
 ```
 ## 添加新的网站支持
-![image](https://github.com/user-attachments/assets/3784341b-d5f6-4e15-84bc-d5a120f4e63f)
 1. 新建Sheet 重命名(可选)
 2. 复制某个setting 重命名为`setting_`+ (new SheetName)
 3. 需要修改其中的 `url` `username` `password` `img_endword` `metaUserPrompt` `contentSystemPrompt` `contentUserPrompt` 其他参数按需调整
 4. 在(new Sheet)选择需要发布文章的keywords 点击"发布"按钮并等待
 5. 状态会更新到keywords右侧单元格中
 6. 如果内容效果不满意 可通过调整Prompt测试
+![image](https://github.com/user-attachments/assets/3784341b-d5f6-4e15-84bc-d5a120f4e63f)
