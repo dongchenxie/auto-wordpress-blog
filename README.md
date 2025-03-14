@@ -111,7 +111,7 @@ add_action('rest_api_init', function () {
 1. 新建Sheet 重命名(可选)
 2. 复制某个setting 重命名为`setting_`+ (new SheetName)
 3. 需要修改其中的 `url` `username` `password` `img_endword` `metaUserPrompt` `contentSystemPrompt` `contentUserPrompt` 其他参数按需调整
-4. 在发布前把需要工作的(new Sheet)前置到第一位 然后在其中框选需要发布文章的keywords 点击"发布"按钮并等待
+4. 在发布前必须把工作Sheet**前置到第一位** 然后在其中框选需要发布文章的keywords 点击"发布"按钮并等待
 5. 状态会更新到keywords右侧单元格中
 6. 如果内容效果不满意 可通过调整Prompt测试
 ![image](https://github.com/user-attachments/assets/3784341b-d5f6-4e15-84bc-d5a120f4e63f)
