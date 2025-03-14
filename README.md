@@ -73,6 +73,9 @@ Error response:
 
 For security reasons, it's recommended to use WordPress Application Passwords instead of your main account password. You can create an application password in your WordPress admin panel under Users > Profile > Application Passwords.
 
+
+## 添加新的网站支持
+在worpdpress的网站中function.php添加以下内容(rank_math_focus_keyword写入支持)
 ```PHP
 <?php
 function register_rank_math_focus_keyword() {
@@ -84,41 +87,27 @@ function register_rank_math_focus_keyword() {
 }
 add_action( 'init', 'register_rank_math_focus_keyword' );
 
-// add_action('rest_api_init', function () {
-//     register_rest_field('post', 'rank_math_focus_keyword', array(
-//         'get_callback' => function ($post) {
-//             return get_post_meta($post['id'], 'rank_math_focus_keyword', true);
-//         },
-//         'update_callback' => function ($value, $post) {
-//             // 允许具有 'edit_posts' 权限的用户更新该字段
-// //             if (!current_user_can('edit_posts', $post->ID)) {
-// //                 return new WP_Error('rest_forbidden', '无权编辑此字段', array('status' => 403));
-// //             }
-//             return update_post_meta($post->ID, 'rank_math_focus_keyword', $value);
-//         },
-//         'schema' => array(
-//             'description' => 'Rank Math 焦点关键词',
-//             'type' => 'string',
-//         ),
-//     ));
-// });
-
-function register_rank_math_focus_keyword_meta() {
-    register_post_meta( 'post', 'rank_math_focus_keyword', array(
-        'type'         => 'string',
-        'description'  => 'Rank Math 焦点关键词',
-        'single'       => true,
-        'show_in_rest' => true,
-        // 自定义权限校验回调
-        'auth_callback' => function( $allowed, $meta_key, $post_id, $user_id, $cap, $caps ) {
-            // 举例：只要当前用户能“编辑此帖子”，就允许写入
-            return current_user_can( 'edit_post', $post_id );
+add_action('rest_api_init', function () {
+    register_rest_field('post', 'rank_math_focus_keyword', array(
+        'get_callback' => function ($post) {
+            return get_post_meta($post['id'], 'rank_math_focus_keyword', true);
         },
+        'update_callback' => function ($value, $post) {
+            // 允许具有 'edit_posts' 权限的用户更新该字段
+            if (!current_user_can('edit_posts', $post->ID)) {
+                return new WP_Error('rest_forbidden', '无权编辑此字段', array('status' => 403));
+            }
+            return update_post_meta($post->ID, 'rank_math_focus_keyword', $value);
+        },
+        'schema' => array(
+            'description' => 'Rank Math 焦点关键词',
+            'type' => 'string',
+        ),
     ));
-}
-add_action( 'init', 'register_rank_math_focus_keyword_meta' );
+});
 ```
-## 添加新的网站支持
+![image](https://github.com/user-attachments/assets/d884975f-6f05-47ee-af3a-42ff5693eee4)
+然后在google sheet文件中进行以下操作
 1. 新建Sheet 重命名(可选)
 2. 复制某个setting 重命名为`setting_`+ (new SheetName)
 3. 需要修改其中的 `url` `username` `password` `img_endword` `metaUserPrompt` `contentSystemPrompt` `contentUserPrompt` 其他参数按需调整
