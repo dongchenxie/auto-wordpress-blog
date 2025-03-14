@@ -107,7 +107,11 @@ add_action('rest_api_init', function () {
 });
 ```
 ![image](https://github.com/user-attachments/assets/d884975f-6f05-47ee-af3a-42ff5693eee4)
-然后在google sheet文件中进行以下操作
+在wordpress中获取Application Passwords
+![image](https://github.com/user-attachments/assets/28846d04-c824-459d-8dd5-a03ce4442d5a)
+
+
+最后在google sheet文件中进行以下发布操作
 1. 新建Sheet 重命名(可选)
 2. 复制某个setting 重命名为`setting_`+ (new SheetName)
 3. 需要修改其中的 `url` `username` `password` `img_endword` `metaUserPrompt` `contentSystemPrompt` `contentUserPrompt` 其他参数按需调整
