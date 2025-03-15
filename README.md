@@ -77,7 +77,6 @@ For security reasons, it's recommended to use WordPress Application Passwords in
 ## 添加新的网站支持
 在worpdpress的网站中function.php添加以下内容(rank_math_focus_keyword写入支持)
 ```PHP
-<?php
 function register_rank_math_focus_keyword() {
     register_meta( 'post', 'rank_math_focus_keyword', array(
         'show_in_rest' => true,
