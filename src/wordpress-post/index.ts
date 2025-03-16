@@ -512,6 +512,7 @@ export async function generateCompleteWordPressPost(
     // 替换文本中的关键词占位符,仅当文本包含${primaryKeyword}时才进行替换
     const replaceKeywordPlaceholders = (text: string | undefined): string => {
       if (!text) return "";
+      text = text ? text.toString() : "";
       // 检查是否包含${primaryKeyword}占位符
       if (text.includes("${primaryKeyword}")) {
         return text.replace(/\${primaryKeyword}/g, primaryKeyword);
