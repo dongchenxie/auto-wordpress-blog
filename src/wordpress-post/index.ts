@@ -376,6 +376,9 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
       { username: requestBody.username, password: requestBody.password },
       requestBody.keywords,
       requestBody.model as any,
+      requestBody.metaModel as any,
+      requestBody.metaTemperature as any,
+      requestBody.metaMax_tokens as any,
       requestBody.metaUserPrompt as any,
       requestBody.metaSystemPrompt as any,
       requestBody.metajson as any,
@@ -383,10 +386,7 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
       requestBody.contentSystemPrompt as any,
       requestBody.metainput as any,
       requestBody.img_endword as any,
-      requestBody.img_num as any,
-      requestBody.metaModel as any,
-      requestBody.metaTemperature as any,
-      requestBody.metaMax_tokens as any
+      requestBody.img_num as any
     );
 
     // 添加状态
