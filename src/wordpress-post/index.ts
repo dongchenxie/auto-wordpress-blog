@@ -23,6 +23,9 @@ interface WordPressPostRequest {
 
   apiKey?: string;
   model?: string;
+  metaModel?: string;
+  metaTemperature?: number;
+  metaMax_tokens?: number;
 }
 
 // WordPress post data interface
@@ -380,7 +383,10 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
       requestBody.contentSystemPrompt as any,
       requestBody.metainput as any,
       requestBody.img_endword as any,
-      requestBody.img_num as any
+      requestBody.img_num as any,
+      requestBody.metaModel as any,
+      requestBody.metaTemperature as any,
+      requestBody.metaMax_tokens as any
     );
 
     // 添加状态
@@ -464,6 +470,9 @@ export async function generateCompleteWordPressPost(
   auth: { username: string; password: string },
   keywords: string[],
   model?: string,
+  metaModel?: string,
+  metaTemperature?: number,
+  metaMax_tokens?: number,
   metaUserPrompt?: string,
   metaSystemPrompt?: string,
   metajson?: boolean,
@@ -542,9 +551,9 @@ export async function generateCompleteWordPressPost(
         systemPrompt: metaSystemPrompt,
         keywords,
         jsonSchema: metajson ? metadataSchema : undefined,
-        model: "claude-3-5-haiku-20241022",
-        temperature: 0.5,
-        max_tokens: 2000,
+        model: metaModel || "claude-3-5-haiku-20241022",
+        temperature: metaTemperature || 0.5,
+        max_tokens: metaMax_tokens || 2000,
       };
 
       // 打印配置信息
