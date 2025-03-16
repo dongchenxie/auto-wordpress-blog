@@ -979,6 +979,18 @@ export async function generateCompleteWordPressPost(
       featured_image_keywords
     );
     logger.info("Featured media ID:", featured_media_id);
+    // 处理 focus_keywords，确保它是字符串或字符串数组
+    let focusKeywordsString: string;
+    if (typeof generatedContent.focus_keywords === "string") {
+      // 如果已经是字符串，直接使用
+      focusKeywordsString = generatedContent.focus_keywords;
+    } else if (Array.isArray(generatedContent.focus_keywords)) {
+      // 如果是数组，使用 join 方法
+      focusKeywordsString = generatedContent.focus_keywords.join(",");
+    } else {
+      // 如果是其他类型或 undefined，使用 keywords 数组
+      focusKeywordsString = keywords.join(",");
+    }
 
     // 构建最终的WordPress文章数据
     const postData = {
@@ -986,8 +998,7 @@ export async function generateCompleteWordPressPost(
       title: generatedContent.title,
       content: generatedContent.content,
       excerpt: generatedContent.excerpt,
-      rank_math_focus_keyword:
-        generatedContent.focus_keywords?.join(",") || keywords.join(","),
+      rank_math_focus_keyword: focusKeywordsString,
       categories: categoryIds,
       tags: tagIds,
       featured_media: featured_media_id,
