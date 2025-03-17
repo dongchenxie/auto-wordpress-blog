@@ -771,6 +771,18 @@ export async function generateCompleteWordPressPost(
     // 处理 tags 可能是字符串的情况
     if (typeof generatedTags === "string") {
       generatedTags = generatedTags.split(",").map((tag) => tag.trim());
+    } else if (Array.isArray(generatedTags) && generatedTags.length > 0) {
+      // 检查数组中的每个元素是否包含逗号，如果包含则需要进一步分割
+      const expandedTags: string[] = [];
+      for (const tag of generatedTags) {
+        if (typeof tag === "string" && tag.includes(",")) {
+          // 如果标签字符串包含逗号，则分割成多个标签
+          expandedTags.push(...tag.split(",").map((t) => t.trim()));
+        } else {
+          expandedTags.push(tag);
+        }
+      }
+      generatedTags = expandedTags;
     }
 
     if (generatedTags && generatedTags.length > 0) {
@@ -779,6 +791,11 @@ export async function generateCompleteWordPressPost(
       const tagsToCreate: string[] = [];
 
       for (const tagName of generatedTags) {
+        // 跳过空标签
+        if (!tagName || typeof tagName !== "string" || tagName.trim() === "") {
+          continue;
+        }
+
         const normalized = normalizeTaxonomyName(tagName);
         if (tagsMap[normalized]) {
           existingTagIds.push(tagsMap[normalized]);
@@ -1030,6 +1047,17 @@ async function createNewTags(
 
   for (const tagName of tagNames) {
     try {
+      // 跳过过长的标签名（WordPress通常限制在200个字符以内）
+      if (tagName.length > 200) {
+        logger.warn(
+          `Skipping tag that exceeds length limit: ${tagName.substring(
+            0,
+            50
+          )}...`
+        );
+        continue;
+      }
+
       const endpoint = `${url}/wp-json/wp/v2/tags`;
       const response = await axios.post(
         endpoint,
@@ -1039,7 +1067,7 @@ async function createNewTags(
 
       if (response.data && response.data.id) {
         tagIds.push(response.data.id);
-        // logger.info(`Created new tag: ${tagName}`, { id: response.data.id });
+        logger.info(`Created new tag: ${tagName}`, { id: response.data.id });
       }
     } catch (error) {
       logger.error(`Failed to create tag: ${tagName}`, {
