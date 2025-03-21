@@ -1,28 +1,28 @@
 import OpenAI from "openai";
 import { createLogger } from "../wordpress-post/logger";
 
-// Claude请求配置接口
+// 请求配置接口
 export interface ClaudeRequestConfig {
   // 基本参数
   prompt: string;
   keywords: string[];
+  // 新增：指定AI服务类型
+  serviceType: string;
+  apiKey: string;
+  model?: string;
 
   // API控制参数
+  systemPrompt?: string;
   temperature?: number;
-  apiKey?: string;
-  model?: string;
   max_tokens?: number;
   jsonSchema?: Record<string, any>;
-
-  // 新增：允许从外部传入系统提示
-  systemPrompt?: string;
 
   // 请求控制选项
   retryOnRateLimit?: boolean;
   maxRetries?: number;
 }
 
-// Claude响应接口
+// 响应接口
 export interface ClaudeResponse {
   content: string;
   title: string;
@@ -30,61 +30,104 @@ export interface ClaudeResponse {
 }
 
 /**
- * 使用Claude API生成内容
- * @param config 包含自定义systemPrompt的请求配置
+ * 使用AI服务生成内容，支持Claude、OpenAI和Gemini
+ * @param config 请求配置
  * @returns 生成的内容
  */
 export const generateContent = async (
-  config: ClaudeRequestConfig
+  RequestConfig: ClaudeRequestConfig
 ): Promise<ClaudeResponse | Record<string, any> | string> => {
   const {
     prompt,
     keywords,
+    serviceType: configServiceType,
     apiKey: configApiKey,
     model: configModel,
+    systemPrompt: SystemPrompt,
     temperature = 0.7,
     max_tokens = 4000,
-    systemPrompt: SystemPrompt,
     retryOnRateLimit = true,
     maxRetries = 2,
     jsonSchema,
-  } = config;
+  } = RequestConfig;
 
-  const logger = createLogger("claude-service");
-  const model = configModel || "claude-3-haiku-20240307";
-  const apiKey =
-    configApiKey || process.env.API_KEY || process.env.CLAUDE_API_KEY;
+  const logger = createLogger("ai-service");
 
-  if (!apiKey) {
-    logger.error("API key not provided");
-    throw new Error("API key is required for Claude API");
+  // 确定模型和服务类型
+  const serviceType = configServiceType;
+  const model =
+    configModel ||
+    (serviceType === "gemini"
+      ? "gemini-2.0-flash"
+      : "claude-3-5-haiku-20241022");
+
+  // 根据服务类型获取API密钥
+  let apiKey: string | undefined;
+  switch (serviceType) {
+    case "claude":
+      apiKey =
+        configApiKey || process.env.API_KEY || process.env.CLAUDE_API_KEY;
+      break;
+    case "openai":
+      apiKey = configApiKey || process.env.OPENAI_API_KEY;
+      break;
+    case "gemini":
+      apiKey = configApiKey || process.env.GEMINI_API_KEY;
+      break;
   }
 
-  // 默认API客户端配置
-  const baseOptions = {
-    apiKey: apiKey,
-    baseURL: "https://api.anthropic.com/v1/",
-    defaultHeaders: {
-      "anthropic-version": "2023-06-01",
-    },
-  };
+  if (!apiKey) {
+    logger.error(`API key not provided for ${serviceType} service`);
+    throw new Error(`API key is required for ${serviceType} service`);
+  }
+
+  // 根据服务类型配置API客户端
+  let baseOptions: any;
+  switch (serviceType) {
+    case "claude":
+      baseOptions = {
+        apiKey: apiKey,
+        baseURL: "https://api.anthropic.com/v1/",
+        defaultHeaders: {
+          "anthropic-version": "2023-06-01",
+        },
+      };
+      break;
+    case "openai":
+      baseOptions = {
+        apiKey: apiKey,
+      };
+      break;
+    case "gemini":
+      // 更新 Gemini 的配置以使用 OpenAI 兼容层
+      baseOptions = {
+        apiKey: apiKey,
+        baseURL:
+          "https://generativelanguage.googleapis.com/v1beta/openai/openai/",
+        defaultHeaders: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      };
+      break;
+  }
 
   let attemptCount = 0;
   let lastError: Error | null = null;
 
   while (attemptCount <= maxRetries) {
     try {
-      // logger.info(`API request attempt ${attemptCount + 1}/${maxRetries + 1}`, {
-      //   model,
-      // });
+      logger.info(`API request attempt ${attemptCount + 1}/${maxRetries + 1}`, {
+        model,
+        serviceType,
+      });
 
-      // 创建OpenAI客户端，指向Anthropic API
+      // 创建API客户端
       const openai = new OpenAI(baseOptions);
 
       // 构建用户提示
       let finalUserPrompt = prompt;
 
-      let finalSystemPrompt = SystemPrompt;
+      let finalSystemPrompt = SystemPrompt || "";
       // 如果存在jsonSchema，则构建包含schema的系统提示
       if (jsonSchema) {
         // 构建更严格的系统提示，确保JSON输出的稳定性
@@ -95,23 +138,48 @@ You must follow these JSON output rules:
 3. Include all required fields
 4. Output pure JSON only
 Required fields:{${Object.keys(jsonSchema).join(",")}}
-${SystemPrompt}`;
+${SystemPrompt || ""}`;
         finalSystemPrompt = finalSystemPrompt.replace(/\n/g, " ");
       }
 
       // 构建请求配置
-      const requestConfig = {
-        model: model,
-        messages: [
-          { role: "system", content: finalSystemPrompt },
-          { role: "user", content: finalUserPrompt },
-        ] as any,
-        temperature: temperature,
-        max_tokens: max_tokens,
-      };
+      let requestConfig: any;
 
-      logger.info("Sending request to Claude API", {
-        requestConfig: requestConfig,
+      // 根据不同服务类型构建请求
+      switch (serviceType) {
+        case "claude":
+        case "openai":
+          requestConfig = {
+            model: model,
+            messages: [
+              { role: "system", content: finalSystemPrompt },
+              { role: "user", content: finalUserPrompt },
+            ],
+            temperature: temperature,
+            max_tokens: max_tokens,
+          };
+          break;
+        case "gemini":
+          // Gemini 的请求格式可能有所不同，这里使用兼容格式
+          requestConfig = {
+            model: model,
+            messages: [
+              ...(finalSystemPrompt
+                ? [{ role: "system", content: finalSystemPrompt }]
+                : []),
+              { role: "user", content: finalUserPrompt },
+            ],
+            temperature: temperature,
+            maxOutputTokens: max_tokens,
+          };
+          break;
+      }
+
+      logger.info(`Sending request to ${serviceType} API`, {
+        requestConfig: {
+          ...requestConfig,
+          model: requestConfig.model,
+        },
       });
 
       // 发送API请求
@@ -182,6 +250,7 @@ ${SystemPrompt}`;
         {
           error: lastError.message,
           isRateLimit,
+          serviceType,
         }
       );
 

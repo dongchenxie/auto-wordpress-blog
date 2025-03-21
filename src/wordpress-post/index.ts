@@ -10,22 +10,21 @@ interface WordPressPostRequest {
   username: string;
   password: string;
   keywords: string[];
+  modelService: string;
+  apiKey: string;
 
-  metaUserPrompt?: string;
-  metaSystemPrompt?: string;
-  metajson?: boolean;
-  contentUserPrompt?: string;
-  contentSystemPrompt?: string;
-  metainput?: boolean;
   img_endword?: string;
   img_num?: number;
-  status?: "publish" | "draft" | "pending" | "private";
 
-  apiKey?: string;
-  model?: string;
   metaModel?: string;
   metaTemperature?: number;
   metaMax_tokens?: number;
+  metaUserPrompt?: string;
+  metaSystemPrompt?: string;
+
+  contentModel?: string;
+  contentUserPrompt?: string;
+  contentSystemPrompt?: string;
 }
 
 // WordPress post data interface
@@ -73,8 +72,7 @@ const formatResponse = (
 
 // Validate request fields
 const validateRequest = (request: WordPressPostRequest): string | null => {
-  const { url, username, password, keywords } = request;
-
+  const { url, username, password, keywords, apiKey } = request;
   // 修改验证逻辑，检查trim后的值
   if (!url || url.trim() === "") return "WordPress URL(url) cannot be empty";
   if (!username || username.trim() === "")
@@ -83,6 +81,9 @@ const validateRequest = (request: WordPressPostRequest): string | null => {
     return "Password(password) cannot be empty";
   if (!Array.isArray(keywords) || keywords.length === 0)
     return "Keywords(keywords) must be a non-empty array";
+  // if (!apiKey) {
+  //   return "Invalid API key";
+  // }
 
   // URL格式验证
   try {
@@ -167,22 +168,6 @@ const getTaxonomyIds = async (
         return id;
       })
       .filter((id) => id !== undefined);
-
-    // 记录未找到的分类
-    const foundNames = result.categoryIds.length;
-    if (foundNames < categoryNames.length) {
-      const missingCategories = categoryNames.filter((name) => {
-        const normalizedName = normalizeTaxonomyName(name);
-        return categoriesMap[normalizedName] === undefined;
-      });
-
-      // logger.warn("Some categories not found", {
-      //   found: foundNames,
-      //   total: categoryNames.length,
-      //   missing: missingCategories,
-      //   missingNormalized: missingCategories.map(normalizeTaxonomyName),
-      // });
-    }
   }
 
   // 处理标签
@@ -198,22 +183,6 @@ const getTaxonomyIds = async (
         return id;
       })
       .filter((id) => id !== undefined);
-
-    // 记录未找到的标签
-    const foundNames = result.tagIds.length;
-    if (foundNames < tagNames.length) {
-      const missingTags = tagNames.filter((name) => {
-        const normalizedName = normalizeTaxonomyName(name);
-        return tagsMap[normalizedName] === undefined;
-      });
-
-      // logger.warn("Some tags not found", {
-      //   found: foundNames,
-      //   total: tagNames.length,
-      //   missing: missingTags,
-      //   missingNormalized: missingTags.map(normalizeTaxonomyName),
-      // });
-    }
   }
 
   return result;
@@ -232,7 +201,6 @@ const fetchAllTaxonomies = async (
   taxonomyType: "categories" | "tags",
   cacheObj: Record<string, number>
 ): Promise<void> => {
-  const logger = createLogger("wordpress-taxonomy");
   const config: AxiosRequestConfig = {
     auth,
     timeout: 10000,
@@ -285,40 +253,10 @@ const fetchAllTaxonomies = async (
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
     } catch (error) {
-      // logger.error(`Error fetching ${taxonomyType}`, {
-      //   error: error instanceof Error ? error.message : String(error),
-      //   page,
-      // });
       hasMore = false; // 出错时停止获取
     }
   }
-
-  // logger.info(`Completed fetching ${taxonomyType}`, {
-  //   totalItems: Object.keys(cacheObj).length,
-  // });
 };
-
-// WordPress API service
-// const wordPressService = {
-//   createPost: async (request: WordPressPostRequest): Promise<any> => {
-//     const {
-//       url,
-//       username,
-//       password,
-//       keywords,
-//       prompt,
-
-//       title,
-//       content,
-//       categories,
-//       tags,
-//       excerpt,
-//       meta,
-//       status = "draft", // 默认为草稿
-
-//       apiKey,
-//       model,
-//     } = request;
 
 export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
   const logger = createLogger("wordpress-post", event);
@@ -371,26 +309,29 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
 
     // logger.info("Using complete blog generation feature");
 
-    const postData = await generateCompleteWordPressPost(
-      requestBody.url,
-      { username: requestBody.username, password: requestBody.password },
-      requestBody.keywords,
-      requestBody.model as any,
-      requestBody.metaModel as any,
-      requestBody.metaTemperature as any,
-      requestBody.metaMax_tokens as any,
-      requestBody.metaUserPrompt as any,
-      requestBody.metaSystemPrompt as any,
-      requestBody.metajson as any,
-      requestBody.contentUserPrompt as any,
-      requestBody.contentSystemPrompt as any,
-      requestBody.metainput as any,
-      requestBody.img_endword as any,
-      requestBody.img_num as any
-    );
+    const postData = await generateCompleteWordPressPost({
+      url: requestBody.url,
+      auth: { username: requestBody.username, password: requestBody.password },
+      keywords: requestBody.keywords,
+      modelService: requestBody.modelService,
+      apiKey: requestBody.apiKey,
+
+      img_endword: requestBody.img_endword,
+      img_num: requestBody.img_num,
+
+      metaModel: requestBody.metaModel,
+      metaTemperature: requestBody.metaTemperature,
+      metaMax_tokens: requestBody.metaMax_tokens,
+      metaUserPrompt: requestBody.metaUserPrompt,
+      metaSystemPrompt: requestBody.metaSystemPrompt,
+
+      contentModel: requestBody.contentModel,
+      contentUserPrompt: requestBody.contentUserPrompt,
+      contentSystemPrompt: requestBody.contentSystemPrompt,
+    });
 
     // 添加状态
-    postData.status = requestBody.status || "draft";
+    postData.status = "draft";
 
     // 发送到WordPress
     const endpoint = `${requestBody.url}/wp-json/wp/v2/posts`;
@@ -461,39 +402,66 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
   }
 };
 
+interface WordPressPostConfig {
+  url: string;
+  auth: { username: string; password: string };
+  keywords: string[];
+  modelService: string;
+  apiKey: string;
+
+  img_endword?: string;
+  img_num?: number;
+
+  metaModel?: string;
+  metaTemperature?: number;
+  metaMax_tokens?: number;
+  metaUserPrompt?: string;
+  metaSystemPrompt?: string;
+
+  contentModel?: string;
+  contentUserPrompt?: string;
+  contentSystemPrompt?: string;
+
+  categoryNames?: string[];
+  tagNames?: string[];
+}
+
 /**
  * 生成完整的WordPress文章，处理类别、标签、特色图片等
  * 拆分为两个并行API请求以提高效率
  */
 export async function generateCompleteWordPressPost(
-  url: string,
-  auth: { username: string; password: string },
-  keywords: string[],
-  model?: string,
-  metaModel?: string,
-  metaTemperature?: number,
-  metaMax_tokens?: number,
-  metaUserPrompt?: string,
-  metaSystemPrompt?: string,
-  metajson?: boolean,
-  contentUserPrompt?: string,
-  contentSystemPrompt?: string,
-  metainput?: boolean,
-  img_endword?: string,
-  img_num?: number,
-  categoryNames: string[] = [],
-  tagNames: string[] = []
+  config: WordPressPostConfig
 ): Promise<any> {
   const logger = createLogger("wordpress-post-generator");
-  // logger.info("Generating complete WordPress post", {
-  //   metaUserPrompt: metaUserPrompt,
-  //   metaSystemPrompt: metaSystemPrompt,
-  //   contentUserPrompt: contentUserPrompt,
-  //   contentSystemPrompt: contentSystemPrompt,
-  //   metajson: metajson,
-  //   metainput: metainput,
-  //   keywords: keywords.join(", "),
-  // });
+  let {
+    url,
+    auth,
+    keywords,
+    modelService,
+    apiKey,
+
+    img_endword,
+    img_num,
+
+    metaModel,
+    metaTemperature,
+    metaMax_tokens,
+    metaUserPrompt,
+    metaSystemPrompt,
+
+    contentModel,
+    contentUserPrompt,
+    contentSystemPrompt,
+
+    categoryNames = [],
+    tagNames = [],
+  } = config;
+
+  // 现在可以方便地记录所有配置
+  logger.info("Generating complete WordPress post", {
+    config: config,
+  });
 
   try {
     // 1. 获取所有分类和标签
@@ -547,20 +515,22 @@ export async function generateCompleteWordPressPost(
 
     try {
       // 构建配置对象
-      const config = {
+      const metadataConfig = {
         prompt: metadataUserPrompt + Object.keys(categoriesMap).join(","),
-        systemPrompt: metaSystemPrompt,
-        keywords,
-        jsonSchema: metajson ? metadataSchema : undefined,
+        keywords: keywords,
+        serviceType: modelService,
+        apiKey: apiKey,
         model: metaModel || "claude-3-5-haiku-20241022",
+        systemPrompt: metaSystemPrompt,
+        jsonSchema: metadataSchema,
         temperature: metaTemperature || 0.5,
         max_tokens: metaMax_tokens || 2000,
       };
 
       // 打印配置信息
-      logger.info("Metadata generation config:", config);
+      logger.info("Metadata generation metadataConfig:", metadataConfig);
 
-      metadataResult = await generateContent(config);
+      metadataResult = await generateContent(metadataConfig);
 
       logger.info("Metadata generation successful", {
         metadataResult: metadataResult,
@@ -601,22 +571,19 @@ export async function generateCompleteWordPressPost(
 
       // 构建内容生成配置
       const contentConfig = {
-        prompt: metainput ? contentPrompt + metadataResult : contentPrompt,
+        prompt: contentPrompt,
+        keywords: keywords,
+        serviceType: modelService,
+        apiKey: apiKey,
+        model: contentModel,
         systemPrompt: contentSystemPrompt,
-        keywords,
-        model,
         temperature: 0.7,
         max_tokens: 8196,
       };
 
       // 打印内容生成配置信息
-      logger.info("Content generation config:", contentConfig);
-
+      logger.info("Content generation contentConfig:", contentConfig);
       contentResult = await generateContent(contentConfig);
-
-      // logger.info("Content generation successful", {
-      //   contentResult: contentResult,
-      // });
 
       // 处理对话模式的响应 (不再作为JSON解析)
       let articleContent = "";

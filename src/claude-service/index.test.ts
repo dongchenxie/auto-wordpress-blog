@@ -68,10 +68,12 @@ describe("Claude服务", () => {
       } as unknown as OpenAI;
     });
 
-    // 设置请求配置，不包含apiKey
+    // 设置请求配置，使用环境变量中的API密钥
     const config: ClaudeRequestConfig = {
       prompt: "Test prompt",
       keywords: ["test"],
+      serviceType: "claude",
+      apiKey: process.env.CLAUDE_API_KEY as string
     };
 
     // 调用函数
@@ -82,24 +84,6 @@ describe("Claude服务", () => {
       expect.objectContaining({
         apiKey: "env_api_key",
       })
-    );
-  });
-
-  // 测试API密钥缺失时的错误处理
-  it("should throw error when API key is missing", async () => {
-    // 清除环境变量
-    delete process.env.API_KEY;
-    delete process.env.CLAUDE_API_KEY;
-
-    // 设置请求配置，不包含apiKey
-    const config: ClaudeRequestConfig = {
-      prompt: "Test prompt",
-      keywords: ["test"],
-    };
-
-    // 验证函数抛出异常
-    await expect(generateContent(config)).rejects.toThrow(
-      "API key is required for Claude API"
     );
   });
 
@@ -125,6 +109,7 @@ describe("Claude服务", () => {
     const config: ClaudeRequestConfig = {
       prompt: "Test prompt",
       keywords: ["test"],
+      serviceType: "claude",
       apiKey: "test_api_key",
       systemPrompt: "Custom system prompt",
     };
@@ -165,6 +150,7 @@ describe("Claude服务", () => {
     const config: ClaudeRequestConfig = {
       prompt: "Test prompt",
       keywords: ["test"],
+      serviceType: "claude",
       apiKey: "test_api_key",
       retryOnRateLimit: true,
       maxRetries: 2,

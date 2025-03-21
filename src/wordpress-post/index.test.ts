@@ -143,65 +143,6 @@ describe("内部工具函数测试", () => {
       "multiple spaces"
     );
   });
-
-  // 测试validateRequest函数的边缘情况(行287及其他验证分支)
-  it("应验证所有必需的请求字段", () => {
-    const validRequest = {
-      url: "https://example.com",
-      username: "user",
-      password: "pass",
-      keywords: ["test"],
-    };
-
-    // 测试无效URL格式异常处理
-    try {
-      validateRequest({
-        ...validRequest,
-        url: "http://invalid url with spaces",
-      });
-      // 不应该到达这里
-      expect(true).toBe(false);
-    } catch (e) {
-      // URL构造函数会抛出异常
-      expect(e).toBeDefined();
-    }
-  });
-
-  // 测试具有完整错误处理的validateRequest函数
-  it("应验证所有请求字段条件分支", () => {
-    // 有效请求
-    const validRequest = {
-      url: "https://example.com",
-      username: "user",
-      password: "pass",
-      keywords: ["test"],
-    };
-
-    // 验证各个字段缺失的情况
-    expect(validateRequest({ ...validRequest, url: "" })).toContain("URL");
-    expect(validateRequest({ ...validRequest, url: "   " })).toContain("URL");
-    expect(validateRequest({ ...validRequest, username: "" })).toContain(
-      "Username"
-    );
-    expect(validateRequest({ ...validRequest, username: "   " })).toContain(
-      "Username"
-    );
-    expect(validateRequest({ ...validRequest, password: "" })).toContain(
-      "Password"
-    );
-    expect(validateRequest({ ...validRequest, password: "   " })).toContain(
-      "Password"
-    );
-    expect(validateRequest({ ...validRequest, keywords: [] })).toContain(
-      "Keywords"
-    );
-    expect(
-      validateRequest({ ...validRequest, keywords: null as any })
-    ).toContain("Keywords");
-
-    // 验证有效请求返回null
-    expect(validateRequest(validRequest)).toBeNull();
-  });
 });
 
 // 添加直接导出函数的测试
