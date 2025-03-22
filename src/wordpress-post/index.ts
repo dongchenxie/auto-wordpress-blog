@@ -915,16 +915,15 @@ export async function generateCompleteWordPressPost(
         .slice(0, final_img_num)
         .sort(() => Math.random() - 0.5);
 
-      // 后续的图片插入逻辑保持不变
+      // 后续的图片插入逻辑
       if (allImages.length > 0) {
-        // 在内容中查找所有可能的插入位置
         let content = generatedContent.content;
-
-        // 查找所有标题标签结束位置
         const headingEndPositions = [];
         const headingRegex = /<\/h[1-4]>/gi;
         let match;
+        const usedImageUrls = new Set(); // 使用 Set 来追踪已使用的图片 URL
 
+        // 找到所有标题结束位置
         while ((match = headingRegex.exec(content)) !== null) {
           headingEndPositions.push({
             index: match.index,
@@ -932,9 +931,8 @@ export async function generateCompleteWordPressPost(
           });
         }
 
-        // 如果找到了标题标签
         if (headingEndPositions.length > 0) {
-          // 随机选择最多2个不同的位置插入图片
+          // 确保不超过可用的标题数和图片数
           const maxInserts = Math.min(
             final_img_num,
             allImages.length,
@@ -946,43 +944,52 @@ export async function generateCompleteWordPressPost(
             .sort(() => Math.random() - 0.5)
             .slice(0, maxInserts);
 
-          // 按照位置从后向前插入，避免位置偏移问题
+          // 按位置从后向前插入，避免位置错乱
           selectedPositions.sort((a, b) => b - a);
 
-          for (let i = 0; i < selectedPositions.length; i++) {
-            const posIndex = selectedPositions[i];
+          for (const posIndex of selectedPositions) {
             const pos = headingEndPositions[posIndex];
-            const imageData = allImages[i];
 
-            // 获取图片URL和摄影师信息
+            // 查找未使用的图片
+            const unusedImage = allImages.find((img) => {
+              const imgUrl = img.sizes.large2x || img.sizes.large || img.url;
+              return !usedImageUrls.has(imgUrl);
+            });
+
+            if (!unusedImage) {
+              logger.warn("No unused images available, skipping insertion");
+              continue;
+            }
+
             const imageUrl =
-              imageData.sizes.large2x || imageData.sizes.large || imageData.url;
-            const keyword = shuffledKeywords[i % shuffledKeywords.length];
+              unusedImage.sizes.large2x ||
+              unusedImage.sizes.large ||
+              unusedImage.url;
+            usedImageUrls.add(imageUrl); // 记录已使用的图片URL
 
-            // 构建图片HTML标签
+            const keyword =
+              shuffledKeywords[posIndex % shuffledKeywords.length];
             const imgHtml = `
     <figure class="wp-block-image">
       <img src="${imageUrl}" alt="${keyword}" class="wp-image"/>
     </figure>`;
 
-            // 插入图片
             const insertPosition = pos.index + pos.length;
             content =
               content.slice(0, insertPosition) +
               imgHtml +
               content.slice(insertPosition);
 
-            logger.info(`Successfully inserted image ${i + 1} into content`, {
-              keyword,
+            logger.info(`Inserted unique image at position ${insertPosition}`, {
               imageUrl,
-              position: insertPosition,
+              keyword,
             });
           }
 
           // 更新内容
           generatedContent.content = content;
         } else {
-          // 如果没找到标题标签，在内容开头插入第一张图片
+          // 如果没有找到标题标签，只插入一张图片在开头
           const imageData = allImages[0];
           const imageUrl =
             imageData.sizes.large2x || imageData.sizes.large || imageData.url;
@@ -994,10 +1001,9 @@ export async function generateCompleteWordPressPost(
     </figure>`;
 
           generatedContent.content = imgHtml + content;
-
-          logger.info("Inserted Pexels image at the beginning of content", {
-            keyword,
+          logger.info("Inserted single image at the beginning of content", {
             imageUrl,
+            keyword,
           });
         }
       } else {
