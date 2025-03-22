@@ -631,11 +631,32 @@ export async function generateCompleteWordPressPost(
 
         // 移除Markdown代码块标记
         if (articleContent.includes("```")) {
-          logger.info("Removing Markdown code block markers from content");
-          // 移除开始的```html或其他代码块标记
+          logger.warn("Removing Markdown code block markers from content");
+
+          // 更全面的正则表达式处理
+          // 1. 处理开头的代码块标记 (```html, ```javascript 等)
           articleContent = articleContent.replace(/```[a-z]*\n/g, "");
-          // 移除结束的```，考虑结尾可能有无空格的情况
-          articleContent = articleContent.replace(/\n\s*```/g, "");
+
+          // 2. 处理结尾的代码块标记，考虑多种情况
+          articleContent = articleContent.replace(/\n\s*```\s*/g, "");
+
+          // 3. 处理单行中的代码块标记
+          articleContent = articleContent.replace(
+            /```[a-z]*\s(.*?)\s```/g,
+            "$1"
+          );
+
+          // 4. 处理可能的残留代码块标记
+          articleContent = articleContent.replace(/```/g, "");
+
+          // 5. 处理HTML结尾后的额外内容（如解释文本）
+          if (articleContent.includes("</html>")) {
+            const htmlEndIndex = articleContent.indexOf("</html>") + 7; // 7是"</html>"的长度
+            articleContent = articleContent.substring(0, htmlEndIndex);
+          }
+
+          // 将处理后的内容赋值回contentResult
+          contentResult = articleContent;
         }
 
         // 检查是否返回了Markdown格式而非HTML
@@ -656,6 +677,9 @@ export async function generateCompleteWordPressPost(
             .replace(/\n\n/g, "</p><p>")
             .replace(/^\s*\n/gm, "</p><p>");
           articleContent = "<p>" + articleContent + "</p>";
+
+          // 将转换后的内容赋值回contentResult
+          contentResult = articleContent;
         }
       } else {
         // 无法获取内容，使用备用内容
@@ -665,6 +689,8 @@ export async function generateCompleteWordPressPost(
           <p>This is an article about ${primaryKeyword}.</p>
           <p>Keywords: ${keywords.join(", ")}</p>
         `;
+        // 将备用内容赋值给contentResult
+        contentResult = articleContent;
       }
     } catch (error) {
       // 错误处理，检查是否为速率限制错误
