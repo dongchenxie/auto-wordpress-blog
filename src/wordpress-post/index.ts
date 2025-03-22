@@ -548,15 +548,54 @@ export async function generateCompleteWordPressPost(
             error: error instanceof Error ? error.message : String(error),
             metadataResult,
           });
-          // 如果解析失败，创建一个基本的元数据对象
-          metadataResult = {
-            title: `Ultimate Guide to ${primaryKeyword}`,
-            slug: primaryKeyword.toLowerCase().replace(/\s+/g, "-"),
-            excerpt: `Discover everything you need to know about ${primaryKeyword} in this comprehensive guide.`,
-            categories: categoryNames || ["Fishing"],
-            tags: tagNames || keywords,
-            focus_keywords: keywords,
-          };
+
+          // 尝试清理 Markdown 代码块标记后再解析
+          if (typeof metadataResult === "string") {
+            try {
+              // 移除开头的 ```json\n 和结尾的 ```
+              let cleanedJson = metadataResult;
+              if (cleanedJson.includes("```")) {
+                logger.info("Attempting to clean Markdown code block markers");
+                // 移除开始的 ```json 或其他代码块标记
+                cleanedJson = cleanedJson.replace(/```[a-z]*\n/g, "");
+                // 移除结束的 ```
+                cleanedJson = cleanedJson.replace(/\n```/g, "");
+
+                // 尝试解析清理后的 JSON
+                metadataResult = JSON.parse(cleanedJson);
+                logger.info(
+                  "Successfully parsed JSON after cleaning Markdown markers"
+                );
+              }
+            } catch (cleanError) {
+              logger.error("Failed to parse JSON even after cleaning", {
+                error:
+                  cleanError instanceof Error
+                    ? cleanError.message
+                    : String(cleanError),
+              });
+
+              // 如果解析失败，创建一个基本的元数据对象
+              metadataResult = {
+                title: `Ultimate Guide to ${primaryKeyword}`,
+                slug: primaryKeyword.toLowerCase().replace(/\s+/g, "-"),
+                excerpt: `Discover everything you need to know about ${primaryKeyword} in this comprehensive guide.`,
+                categories: categoryNames || ["Fishing"],
+                tags: tagNames || keywords,
+                focus_keywords: keywords,
+              };
+            }
+          } else {
+            // 如果解析失败，创建一个基本的元数据对象
+            metadataResult = {
+              title: `Ultimate Guide to ${primaryKeyword}`,
+              slug: primaryKeyword.toLowerCase().replace(/\s+/g, "-"),
+              excerpt: `Discover everything you need to know about ${primaryKeyword} in this comprehensive guide.`,
+              categories: categoryNames,
+              tags: tagNames || keywords,
+              focus_keywords: keywords,
+            };
+          }
         }
       }
 
@@ -585,11 +624,20 @@ export async function generateCompleteWordPressPost(
       logger.info("Content generation contentConfig:", contentConfig);
       contentResult = await generateContent(contentConfig);
 
-      // 处理对话模式的响应 (不再作为JSON解析)
       let articleContent = "";
       if (typeof contentResult === "string") {
         // 如果直接返回字符串
         articleContent = contentResult;
+
+        // 移除Markdown代码块标记
+        if (articleContent.includes("```")) {
+          logger.info("Removing Markdown code block markers from content");
+          // 移除开始的```html或其他代码块标记
+          articleContent = articleContent.replace(/```[a-z]*\n/g, "");
+          // 移除结束的```，考虑结尾可能有无空格的情况
+          articleContent = articleContent.replace(/\n\s*```/g, "");
+        }
+
         // 检查是否返回了Markdown格式而非HTML
         if (articleContent.startsWith("#") && !articleContent.startsWith("<")) {
           logger.warn(
