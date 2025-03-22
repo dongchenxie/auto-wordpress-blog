@@ -805,65 +805,70 @@ export async function generateCompleteWordPressPost(
       }
     }
 
-    // 9. 从Pexels获取图片并插入到文章内容中
-    // 使用image_keywords数组或回退到主关键词
+    // 9. 获取图片并插入到文章内容中
     let imageKeywords = generatedContent.image_keywords || [primaryKeyword];
 
     // 确保imageKeywords是数组
     if (!Array.isArray(imageKeywords)) {
       if (typeof imageKeywords === "string") {
-        // 如果是逗号分隔的字符串，拆分为数组
         imageKeywords = imageKeywords.split(",").map((k) => k.trim());
       } else {
-        // 如果不是数组也不是字符串，使用主关键词
         imageKeywords = [primaryKeyword];
       }
     }
     let final_img_num = img_num ? img_num : 3;
-    try {
-      // 获取Pexels图片 - 使用image_keywords数组中的关键词
-      const imageLoader = new ImageLoader();
 
-      logger.info("Using image keywords for search", { imageKeywords });
+    try {
+      // 首先从WordPress Media库搜索图片
+      const wpMediaImages = [];
 
       // 随机打乱关键词顺序
       const shuffledKeywords = [...imageKeywords].sort(
         () => Math.random() - 0.5
       );
 
-      // 为每个关键词获取图片，最多获取3张
-      const allImages: ImageResult[] = [];
-
-      // 为每个关键词获取图片
+      // 尝试从WordPress Media库获取图片
       for (const keyword of shuffledKeywords) {
         try {
-          const images = await imageLoader.getImages(keyword, final_img_num);
-          if (images && images.length > 0) {
-            allImages.push(...images);
-            logger.info(
-              `Found ${images.length} images for keyword: ${keyword}`
-            );
-          }
-        } catch (error) {
-          logger.warn(`Failed to get images for keyword: ${keyword}`, {
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
+          const mediaEndpoint = `${url}/wp-json/wp/v2/media?search=${encodeURIComponent(
+            keyword
+          )}&per_page=5`;
+          const response = await axios.get(mediaEndpoint, { auth });
+          const items = response.data;
 
-      // 如果没有找到图片，尝试使用主关键词
-      if (allImages.length === 0 && !imageKeywords.includes(primaryKeyword)) {
-        try {
-          const images = await imageLoader.getImages(primaryKeyword, 2);
-          if (images && images.length > 0) {
-            allImages.push(...images);
+          if (items && items.length > 0) {
+            // 过滤并格式化媒体项
+            const mediaItems = items.map((item: any) => ({
+              url: item.source_url,
+              sizes: {
+                large2x:
+                  item.media_details?.sizes?.large?.source_url ||
+                  item.source_url,
+                large:
+                  item.media_details?.sizes?.large?.source_url ||
+                  item.source_url,
+                medium:
+                  item.media_details?.sizes?.medium?.source_url ||
+                  item.source_url,
+                small:
+                  item.media_details?.sizes?.thumbnail?.source_url ||
+                  item.source_url,
+              },
+              attribution: {
+                photographer: item.caption?.rendered || "",
+                photographerUrl: "",
+                source: "WordPress Media Library",
+                sourceUrl: item.link,
+              },
+            }));
+            wpMediaImages.push(...mediaItems);
             logger.info(
-              `Found ${images.length} images for primary keyword: ${primaryKeyword}`
+              `Found ${mediaItems.length} images in WordPress Media Library for keyword: ${keyword}`
             );
           }
         } catch (error) {
           logger.warn(
-            `Failed to get images for primary keyword: ${primaryKeyword}`,
+            `Failed to get images from WordPress Media Library for keyword: ${keyword}`,
             {
               error: error instanceof Error ? error.message : String(error),
             }
@@ -871,10 +876,53 @@ export async function generateCompleteWordPressPost(
         }
       }
 
-      // 随机打乱所有获取的图片
-      const shuffledImages = [...allImages].sort(() => Math.random() - 0.5);
+      // 随机打乱WordPress图片
+      const shuffledWPImages = [...wpMediaImages].sort(
+        () => Math.random() - 0.5
+      );
 
-      if (shuffledImages.length > 0) {
+      // 如果WordPress Media库中的图片不够，才使用Pexels
+      let allImages = [...shuffledWPImages];
+      if (allImages.length < final_img_num) {
+        logger.info(
+          `WordPress Media Library only has ${allImages.length} images, fetching more from Pexels...`
+        );
+        const remainingCount = final_img_num - allImages.length;
+
+        // 获取Pexels图片
+        const imageLoader = new ImageLoader();
+        for (const keyword of shuffledKeywords) {
+          if (allImages.length >= final_img_num) break;
+
+          try {
+            const pexelsImages = await imageLoader.getImages(
+              keyword,
+              remainingCount
+            );
+            if (pexelsImages && pexelsImages.length > 0) {
+              allImages.push(...pexelsImages);
+              logger.info(
+                `Found ${pexelsImages.length} additional images from Pexels for keyword: ${keyword}`
+              );
+            }
+          } catch (error) {
+            logger.warn(
+              `Failed to get images from Pexels for keyword: ${keyword}`,
+              {
+                error: error instanceof Error ? error.message : String(error),
+              }
+            );
+          }
+        }
+      }
+
+      // 限制图片数量并随机打乱
+      allImages = allImages
+        .slice(0, final_img_num)
+        .sort(() => Math.random() - 0.5);
+
+      // 后续的图片插入逻辑保持不变
+      if (allImages.length > 0) {
         // 在内容中查找所有可能的插入位置
         let content = generatedContent.content;
 
@@ -895,7 +943,7 @@ export async function generateCompleteWordPressPost(
           // 随机选择最多2个不同的位置插入图片
           const maxInserts = Math.min(
             final_img_num,
-            shuffledImages.length,
+            allImages.length,
             headingEndPositions.length
           );
           const selectedPositions = [
@@ -910,7 +958,7 @@ export async function generateCompleteWordPressPost(
           for (let i = 0; i < selectedPositions.length; i++) {
             const posIndex = selectedPositions[i];
             const pos = headingEndPositions[posIndex];
-            const imageData = shuffledImages[i];
+            const imageData = allImages[i];
 
             // 获取图片URL和摄影师信息
             const imageUrl =
@@ -946,7 +994,7 @@ export async function generateCompleteWordPressPost(
           generatedContent.content = content;
         } else {
           // 如果没找到标题标签，在内容开头插入第一张图片
-          const imageData = shuffledImages[0];
+          const imageData = allImages[0];
           const imageUrl =
             imageData.sizes.large2x || imageData.sizes.large || imageData.url;
           const photographer = imageData.attribution.photographer;
