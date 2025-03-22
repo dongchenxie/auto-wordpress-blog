@@ -5,13 +5,13 @@ import { generateContent } from "../claude-service";
 import { ImageLoader, ImageResult } from "../image-service/pexels";
 
 // Request body structure definition
-interface WordPressPostRequest {
+// 基础接口，包含共同的属性
+interface BaseWordPressConfig {
   url: string;
-  username: string;
-  password: string;
   keywords: string[];
   modelService: string;
   apiKey: string;
+  model: string;
 
   img_endword?: string;
   img_num?: number;
@@ -22,21 +22,31 @@ interface WordPressPostRequest {
   metaUserPrompt?: string;
   metaSystemPrompt?: string;
 
-  contentModel?: string;
   contentUserPrompt?: string;
   contentSystemPrompt?: string;
 }
 
-// WordPress post data interface
-interface WordPressPostData {
-  title: string;
-  content: string;
-  categories: number[];
-  tags: number[];
-  excerpt: string;
-  meta: Record<string, any>;
-  status: string;
+// 请求接口，继承基础接口
+interface WordPressPostRequest extends BaseWordPressConfig {
+  username: string;
+  password: string;
 }
+
+// 配置接口，继承基础接口
+interface WordPressPostConfig extends BaseWordPressConfig {
+  auth: { username: string; password: string };
+}
+
+// 转换函数
+const convertRequestToConfig = (
+  request: WordPressPostRequest
+): WordPressPostConfig => {
+  const { username, password, ...baseConfig } = request;
+  return {
+    ...baseConfig,
+    auth: { username, password },
+  };
+};
 
 // Error handling function
 const createErrorResponse = (
@@ -306,29 +316,8 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
       });
       return createErrorResponse(validationError, 400);
     }
-
-    // logger.info("Using complete blog generation feature");
-
-    const postData = await generateCompleteWordPressPost({
-      url: requestBody.url,
-      auth: { username: requestBody.username, password: requestBody.password },
-      keywords: requestBody.keywords,
-      modelService: requestBody.modelService,
-      apiKey: requestBody.apiKey,
-
-      img_endword: requestBody.img_endword,
-      img_num: requestBody.img_num,
-
-      metaModel: requestBody.metaModel,
-      metaTemperature: requestBody.metaTemperature,
-      metaMax_tokens: requestBody.metaMax_tokens,
-      metaUserPrompt: requestBody.metaUserPrompt,
-      metaSystemPrompt: requestBody.metaSystemPrompt,
-
-      contentModel: requestBody.contentModel,
-      contentUserPrompt: requestBody.contentUserPrompt,
-      contentSystemPrompt: requestBody.contentSystemPrompt,
-    });
+    const inputConfig = convertRequestToConfig(requestBody);
+    const postData = await generateCompleteWordPressPost(inputConfig);
 
     // 添加状态
     postData.status = "draft";
@@ -402,36 +391,12 @@ export const handler = async (event: any): Promise<APIGatewayProxyResult> => {
   }
 };
 
-interface WordPressPostConfig {
-  url: string;
-  auth: { username: string; password: string };
-  keywords: string[];
-  modelService: string;
-  apiKey: string;
-
-  img_endword?: string;
-  img_num?: number;
-
-  metaModel?: string;
-  metaTemperature?: number;
-  metaMax_tokens?: number;
-  metaUserPrompt?: string;
-  metaSystemPrompt?: string;
-
-  contentModel?: string;
-  contentUserPrompt?: string;
-  contentSystemPrompt?: string;
-
-  categoryNames?: string[];
-  tagNames?: string[];
-}
-
 /**
  * 生成完整的WordPress文章，处理类别、标签、特色图片等
  * 拆分为两个并行API请求以提高效率
  */
 export async function generateCompleteWordPressPost(
-  config: WordPressPostConfig
+  inputConfig: WordPressPostConfig
 ): Promise<any> {
   const logger = createLogger("wordpress-post-generator");
   let {
@@ -440,6 +405,7 @@ export async function generateCompleteWordPressPost(
     keywords,
     modelService,
     apiKey,
+    model,
 
     img_endword,
     img_num,
@@ -449,20 +415,17 @@ export async function generateCompleteWordPressPost(
     metaMax_tokens,
     metaUserPrompt,
     metaSystemPrompt,
-
-    contentModel,
     contentUserPrompt,
     contentSystemPrompt,
-
-    categoryNames = [],
-    tagNames = [],
-  } = config;
+  } = inputConfig;
 
   // 现在可以方便地记录所有配置
   logger.info("Generating complete WordPress post", {
-    config: config,
+    inputConfig: inputConfig,
   });
 
+  let categoryNames: string[] = [];
+  let tagNames: string[] = [];
   try {
     // 1. 获取所有分类和标签
     const categoriesMap: Record<string, number> = {};
@@ -520,7 +483,7 @@ export async function generateCompleteWordPressPost(
         keywords: keywords,
         serviceType: modelService,
         apiKey: apiKey,
-        model: metaModel,
+        model: metaModel || model,
         systemPrompt: metaSystemPrompt,
         jsonSchema: metadataSchema,
         temperature: metaTemperature || 0.5,
@@ -614,7 +577,7 @@ export async function generateCompleteWordPressPost(
         keywords: keywords,
         serviceType: modelService,
         apiKey: apiKey,
-        model: contentModel,
+        model: model,
         systemPrompt: contentSystemPrompt,
         temperature: 0.7,
         max_tokens: 8196,
