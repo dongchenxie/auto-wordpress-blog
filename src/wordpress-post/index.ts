@@ -520,7 +520,7 @@ export async function generateCompleteWordPressPost(
         keywords: keywords,
         serviceType: modelService,
         apiKey: apiKey,
-        model: metaModel || "claude-3-5-haiku-20241022",
+        model: metaModel,
         systemPrompt: metaSystemPrompt,
         jsonSchema: metadataSchema,
         temperature: metaTemperature || 0.5,
