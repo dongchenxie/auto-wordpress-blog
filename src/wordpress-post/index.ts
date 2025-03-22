@@ -544,7 +544,7 @@ export async function generateCompleteWordPressPost(
             parsedMetadata: metadataResult,
           });
         } catch (error) {
-          logger.error("Failed to parse metadata JSON", {
+          logger.warn("Failed to parse metadata JSON", {
             error: error instanceof Error ? error.message : String(error),
             metadataResult,
           });
@@ -629,35 +629,49 @@ export async function generateCompleteWordPressPost(
         // 如果直接返回字符串
         articleContent = contentResult;
 
-        // 移除Markdown代码块标记
+        // 1. 首先尝试提取JSON中的content字段
+        try {
+          const jsonContent = JSON.parse(articleContent);
+          if (jsonContent && typeof jsonContent.content === "string") {
+            articleContent = jsonContent.content;
+            logger.warn("Extracted content from JSON response");
+          }
+        } catch (e) {
+          // 如果不是JSON格式，继续使用原始内容
+          logger.warn("Response is not in JSON format, using as-is");
+        }
+
+        // 2. 移除开头的解释性文本
+        if (articleContent.includes("<!DOCTYPE html>")) {
+          const doctypeIndex = articleContent.indexOf("<!DOCTYPE html>");
+          articleContent = articleContent.substring(doctypeIndex);
+          logger.warn("Removed explanatory text before DOCTYPE");
+        }
+
+        // 3. 移除Markdown代码块标记
         if (articleContent.includes("```")) {
           logger.warn("Removing Markdown code block markers from content");
 
           // 更全面的正则表达式处理
-          // 1. 处理开头的代码块标记 (```html, ```javascript 等)
+          // 处理开头的代码块标记 (```html, ```javascript 等)
           articleContent = articleContent.replace(/```[a-z]*\n/g, "");
-
-          // 2. 处理结尾的代码块标记，考虑多种情况
           articleContent = articleContent.replace(/\n\s*```\s*/g, "");
-
-          // 3. 处理单行中的代码块标记
           articleContent = articleContent.replace(
             /```[a-z]*\s(.*?)\s```/g,
             "$1"
           );
-
-          // 4. 处理可能的残留代码块标记
           articleContent = articleContent.replace(/```/g, "");
-
-          // 5. 处理HTML结尾后的额外内容（如解释文本）
-          if (articleContent.includes("</html>")) {
-            const htmlEndIndex = articleContent.indexOf("</html>") + 7; // 7是"</html>"的长度
-            articleContent = articleContent.substring(0, htmlEndIndex);
-          }
-
-          // 将处理后的内容赋值回contentResult
-          contentResult = articleContent;
         }
+
+        // 4. 处理HTML结尾后的额外内容
+        if (articleContent.includes("</html>")) {
+          const htmlEndIndex = articleContent.indexOf("</html>") + 7;
+          articleContent = articleContent.substring(0, htmlEndIndex);
+          logger.warn("Removed content after HTML end tag");
+        }
+
+        // 将处理后的内容赋值回contentResult
+        contentResult = articleContent;
 
         // 检查是否返回了Markdown格式而非HTML
         if (articleContent.startsWith("#") && !articleContent.startsWith("<")) {
