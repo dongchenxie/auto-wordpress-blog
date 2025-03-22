@@ -55,14 +55,15 @@ export const generateContent = async (
 
   // 确定模型和服务类型
   const serviceType = configServiceType;
-  
+
   // 根据服务类型选择默认模型
-  const model = configModel || 
-    (serviceType === "gemini" 
-      ? "gemini-2.0-flash" 
-      : serviceType === "openai" 
-        ? "gpt-4o" 
-        : "claude-3-5-haiku-20241022");
+  const model =
+    configModel ||
+    (serviceType === "gemini"
+      ? "gemini-2.0-flash"
+      : serviceType === "openai"
+      ? "gpt-4o"
+      : "claude-3-5-haiku-20241022");
 
   // 根据服务类型获取API密钥
   let apiKey: string | undefined;
@@ -104,7 +105,6 @@ export const generateContent = async (
     case "gemini":
       // 更新 Gemini 的配置以使用 OpenAI 兼容层
       baseOptions = {
-        apiKey: apiKey,
         baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
         defaultHeaders: {
           "Authorization": `Bearer ${apiKey}`,
@@ -147,35 +147,16 @@ ${SystemPrompt || ""}`;
       // 构建请求配置
       let requestConfig: any;
 
-      // 根据不同服务类型构建请求
-      switch (serviceType) {
-        case "claude":
-        case "openai":
-          requestConfig = {
-            model: model,
-            messages: [
-              { role: "system", content: finalSystemPrompt },
-              { role: "user", content: finalUserPrompt },
-            ],
-            temperature: temperature,
-            max_tokens: max_tokens,
-          };
-          break;
-        case "gemini":
-          // Gemini 的请求格式
-          requestConfig = {
-            model: model,
-            messages: [
-              ...(finalSystemPrompt
-                ? [{ role: "system", content: finalSystemPrompt }]
-                : []),
-              { role: "user", content: finalUserPrompt },
-            ],
-            temperature: temperature,
-            maxOutputTokens: max_tokens,
-          };
-          break;
-      }
+      // 所有模型使用统一的请求格式
+      requestConfig = {
+        model: model,
+        messages: [
+          { role: "system", content: finalSystemPrompt },
+          { role: "user", content: finalUserPrompt },
+        ],
+        temperature: temperature,
+        max_tokens: max_tokens,
+      };
 
       logger.info(`Sending request to ${serviceType} API`, {
         requestConfig: {
