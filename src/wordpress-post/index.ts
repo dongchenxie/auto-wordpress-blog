@@ -492,9 +492,7 @@ export async function generateCompleteWordPressPost(
 
       // 打印配置信息
       logger.info("Metadata generation metadataConfig:", metadataConfig);
-
       metadataResult = await generateContent(metadataConfig);
-
       logger.info("Metadata generation successful", {
         metadataResult: metadataResult,
       });
@@ -586,7 +584,9 @@ export async function generateCompleteWordPressPost(
       // 打印内容生成配置信息
       logger.info("Content generation contentConfig:", contentConfig);
       contentResult = await generateContent(contentConfig);
-
+      logger.info("Metadata generation successful", {
+        contentResult: contentResult,
+      });
       let articleContent = "";
       if (typeof contentResult === "string") {
         // 如果直接返回字符串
