@@ -609,32 +609,6 @@ export async function generateCompleteWordPressPost(
             .replace(/^\s*\n/gm, "</p><p>");
           articleContent = "<p>" + articleContent + "</p>";
         }
-      } else if (contentResult?.content) {
-        // 如果返回对象中包含content字段
-        articleContent = contentResult.content;
-        // 同样检查是否为Markdown格式
-        if (
-          typeof articleContent === "string" &&
-          articleContent.startsWith("#") &&
-          !articleContent.startsWith("<")
-        ) {
-          logger.warn(
-            "Received Markdown format in content field instead of HTML, attempting simple conversion"
-          );
-          // 简单转换Markdown标题为HTML标题
-          articleContent = articleContent
-            .replace(/^# (.*$)/gm, "<h1>$1</h1>")
-            .replace(/^## (.*$)/gm, "<h2>$1</h2>")
-            .replace(/^### (.*$)/gm, "<h3>$1</h3>")
-            .replace(/^#### (.*$)/gm, "<h4>$1</h4>")
-            .replace(/^##### (.*$)/gm, "<h5>$1</h5>")
-            .replace(/^###### (.*$)/gm, "<h6>$1</h6>")
-            .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-            .replace(/\*(.*?)\*/g, "<em>$1</em>")
-            .replace(/\n\n/g, "</p><p>")
-            .replace(/^\s*\n/gm, "</p><p>");
-          articleContent = "<p>" + articleContent + "</p>";
-        }
       } else {
         // 无法获取内容，使用备用内容
         logger.warn("Could not extract content from response, using fallback");
