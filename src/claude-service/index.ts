@@ -105,9 +105,10 @@ export const generateContent = async (
     case "gemini":
       // 更新 Gemini 的配置以使用 OpenAI 兼容层
       baseOptions = {
+        apiKey: apiKey,
         baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
         defaultHeaders: {
-          "Authorization": `Bearer ${apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
         },
       };
       break;
