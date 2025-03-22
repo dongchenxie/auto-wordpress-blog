@@ -854,12 +854,6 @@ export async function generateCompleteWordPressPost(
                   item.media_details?.sizes?.thumbnail?.source_url ||
                   item.source_url,
               },
-              attribution: {
-                photographer: item.caption?.rendered || "",
-                photographerUrl: "",
-                source: "WordPress Media Library",
-                sourceUrl: item.link,
-              },
             }));
             wpMediaImages.push(...mediaItems);
             logger.info(
@@ -963,14 +957,12 @@ export async function generateCompleteWordPressPost(
             // 获取图片URL和摄影师信息
             const imageUrl =
               imageData.sizes.large2x || imageData.sizes.large || imageData.url;
-            const photographer = imageData.attribution.photographer;
             const keyword = shuffledKeywords[i % shuffledKeywords.length];
 
-            // 构建图片HTML标签，包含必要的属性和Pexels归属信息
+            // 构建图片HTML标签
             const imgHtml = `
     <figure class="wp-block-image">
       <img src="${imageUrl}" alt="${keyword}" class="wp-image"/>
-      <figcaption>Photo by ${photographer} on Pexels</figcaption>
     </figure>`;
 
             // 插入图片
@@ -980,14 +972,11 @@ export async function generateCompleteWordPressPost(
               imgHtml +
               content.slice(insertPosition);
 
-            logger.info(
-              `Successfully inserted Pexels image ${i + 1} into content`,
-              {
-                keyword,
-                imageUrl,
-                position: insertPosition,
-              }
-            );
+            logger.info(`Successfully inserted image ${i + 1} into content`, {
+              keyword,
+              imageUrl,
+              position: insertPosition,
+            });
           }
 
           // 更新内容
@@ -997,13 +986,11 @@ export async function generateCompleteWordPressPost(
           const imageData = allImages[0];
           const imageUrl =
             imageData.sizes.large2x || imageData.sizes.large || imageData.url;
-          const photographer = imageData.attribution.photographer;
           const keyword = shuffledKeywords[0];
 
           const imgHtml = `
     <figure class="wp-block-image">
       <img src="${imageUrl}" alt="${keyword}" class="wp-image"/>
-      <figcaption>Photo by ${photographer} on Pexels</figcaption>
     </figure>`;
 
           generatedContent.content = imgHtml + content;
