@@ -22,6 +22,7 @@ interface BaseWordPressConfig {
   metaUserPrompt?: string;
   metaSystemPrompt?: string;
 
+  contentMax_tokens?: number;
   contentUserPrompt?: string;
   contentSystemPrompt?: string;
 }
@@ -415,6 +416,8 @@ export async function generateCompleteWordPressPost(
     metaMax_tokens,
     metaUserPrompt,
     metaSystemPrompt,
+
+    contentMax_tokens,
     contentUserPrompt,
     contentSystemPrompt,
   } = inputConfig;
@@ -578,7 +581,7 @@ export async function generateCompleteWordPressPost(
         model: model,
         systemPrompt: contentSystemPrompt,
         temperature: 0.7,
-        max_tokens: 8196,
+        max_tokens: contentMax_tokens || 8196,
       };
 
       // 打印内容生成配置信息
