@@ -148,19 +148,19 @@ ${SystemPrompt || ""}`;
       // 构建请求配置
       let requestConfig: any;
 
-      // 根据不同服务类型构建请求配置
-      if (serviceType === "openai") {
-        // OpenAI 模型使用 max_completion_tokens 而不是 max_tokens
+      // 检查是否为 OpenAI 的 o3 模型
+      const isOpenAIO3Model = serviceType === "openai" && model.includes("o3");
+
+      if (isOpenAIO3Model) {
         requestConfig = {
           model: model,
           messages: [
             { role: "system", content: finalSystemPrompt },
             { role: "user", content: finalUserPrompt },
           ],
-          temperature: temperature,
         };
       } else {
-        // Claude 和 Gemini 使用 max_tokens
+        // 其他所有模型使用统一的请求格式
         requestConfig = {
           model: model,
           messages: [
