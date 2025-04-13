@@ -1,6 +1,7 @@
 import { createLogger } from "../logger";
 import { generateContent } from "../../claude-service";
 import { WordPressPostConfig, GeneratedContent } from "../models/interfaces";
+import { WordPressApiService } from "./wordpress-api";
 
 /**
  * 内容生成服务类
@@ -10,11 +11,61 @@ export class ContentGeneratorService {
   private logger = createLogger("content-generator");
 
   /**
+   * 获取WordPress网站的分类和标签数据
+   * @param url WordPress网站URL
+   * @param auth 认证信息
+   * @returns 包含分类和标签的对象
+   */
+  private async fetchWordPressTaxonomies(
+    url: string,
+    auth: { username: string; password: string }
+  ): Promise<{ categories: string[]; tags: string[] }> {
+    this.logger.info("Fetching WordPress taxonomies");
+
+    try {
+      // 创建WordPress API服务实例
+      const wordpressService = new WordPressApiService(url, auth);
+
+      // 临时存储分类和标签数据的对象
+      const categoriesMap: Record<string, number> = {};
+      const tagsMap: Record<string, number> = {};
+
+      // 获取所有分类和标签
+      await wordpressService.fetchAllTaxonomies("categories", categoriesMap);
+      await wordpressService.fetchAllTaxonomies("tags", tagsMap);
+
+      // 提取分类和标签名称
+      const categories = Object.keys(categoriesMap).filter(
+        (name) => name.length > 0 && !name.includes("_")
+      );
+      const tags = Object.keys(tagsMap).filter(
+        (name) => name.length > 0 && !name.includes("_")
+      );
+
+      this.logger.info("WordPress taxonomies fetched", {
+        categoriesCount: categories.length,
+        tagsCount: tags.length,
+      });
+
+      return { categories, tags };
+    } catch (error) {
+      this.logger.error("Error fetching WordPress taxonomies", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      // 返回空数组作为备用
+      return { categories: [], tags: [] };
+    }
+  }
+
+  /**
    * 生成文章元数据和内容
    * @param config WordPress配置
    * @returns 生成的内容
    */
-  async generateContent(config: WordPressPostConfig): Promise<GeneratedContent> {
+  async generateContent(
+    config: WordPressPostConfig
+  ): Promise<GeneratedContent> {
     const {
       keywords,
       modelService,
@@ -28,6 +79,8 @@ export class ContentGeneratorService {
       contentMax_tokens,
       contentUserPrompt,
       contentSystemPrompt,
+      url,
+      auth,
     } = config;
 
     // 记录配置信息
@@ -52,6 +105,10 @@ export class ContentGeneratorService {
     };
 
     try {
+      // 0. 获取WordPress网站的分类和标签数据
+      const { categories: existingCategories, tags: existingTags } =
+        await this.fetchWordPressTaxonomies(url, auth);
+
       // 1. 生成元数据
       const metadataResult = await this.generateMetadata(
         primaryKeyword,
@@ -63,7 +120,9 @@ export class ContentGeneratorService {
         metaUserPrompt,
         metaTemperature,
         metaMax_tokens,
-        metadataSchema
+        metadataSchema,
+        existingCategories,
+        existingTags
       );
 
       // 在两个API调用之间添加延迟，避免触发速率限制
@@ -115,15 +174,49 @@ export class ContentGeneratorService {
     userPrompt?: string,
     temperature?: number,
     max_tokens?: number,
-    jsonSchema?: Record<string, any>
+    jsonSchema?: Record<string, any>,
+    existingCategories?: string[],
+    existingTags?: string[]
   ): Promise<any> {
     // 替换关键词占位符
+    // 准备现有分类和标签数据的字符串表示
+    let existingCategoriesStr = "";
+    let existingTagsStr = "";
+
+    if (existingCategories && existingCategories.length > 0) {
+      // 最多使用前20个分类，避免提示过长
+      const limitedCategories = existingCategories.slice(0, 20);
+      existingCategoriesStr = `\nExisting blog categories: ${limitedCategories.join(
+        ", "
+      )}.`;
+    }
+
+    if (existingTags && existingTags.length > 0) {
+      // 最多使用前50个标签，避免提示过长
+      const limitedTags = existingTags.slice(0, 50);
+      existingTagsStr = `\nExisting blog tags: ${limitedTags.join(", ")}.`;
+    }
+
+    // 基础提示
+    let basePrompt = userPrompt
+      ? userPrompt
+      : `I have a fishing online wordpress store,url is https://fishingfusion.com/主要是是做fishing产品以及各类相关产品. Remember in this conversation, my store potienal customers are english speakers,Be written in high-quality English, suitable for both enthusiasts and professionals.Think and write one comprehensive, detailed, and academically rigorous blog post topic and outline with main keyword ${primaryKeyword}, and other keywords with high search volume and many people willing to know about it.After the main content, please provide: an SEO blog title with power words containing a number,Blog categories,SEO slug,SEO-optimized tags (comma-separated) ,3 precise image_search_keywords for image API (be short and specific) and A compelling excerpt Focus keywords (comma-separated).use Focus Keyword in the SEO Title,Focus Keyword used inside SEO Meta Description,Focus Keyword used in the URL.`;
+
+    // 如果有现有分类和标签，添加到提示中
+    if (existingCategoriesStr || existingTagsStr) {
+      basePrompt += `\n\nPlease use the following existing categories and tags when possible:${existingCategoriesStr}${existingTagsStr}\nYou can also suggest new categories and tags if needed, but prefer using existing ones when relevant.`;
+    }
+
+    // 替换关键词占位符
     const metadataUserPrompt = this.replaceKeywordPlaceholders(
-      userPrompt
-        ? userPrompt
-        : `I have a fishing online wordpress store,url is https://fishingfusion.com/主要是是做fishing产品以及各类相关产品. Remember in this conversation, my store potienal customers are english speakers,Be written in high-quality English, suitable for both enthusiasts and professionals.Think and write one comprehensive, detailed, and academically rigorous blog post topic and outline with main keyword ${primaryKeyword}, and other keywords with high search volume and many people willing to know about it.After the main content, please provide: an SEO blog title with power words containing a number,Blog categories,SEO slug,SEO-optimized tags (comma-separated) ,3 precise image_search_keywords for image API (be short and specific) and A compelling excerpt Focus keywords (comma-separated).use Focus Keyword in the SEO Title,Focus Keyword used inside SEO Meta Description,Focus Keyword used in the URL.`,
+      basePrompt,
       primaryKeyword
     );
+
+    this.logger.info("Metadata generation prompt with taxonomies", {
+      promptLength: metadataUserPrompt.length,
+      hasTaxonomies: !!(existingCategoriesStr || existingTagsStr),
+    });
 
     const metadataSystemPrompt = this.replaceKeywordPlaceholders(
       systemPrompt,
@@ -145,7 +238,7 @@ export class ContentGeneratorService {
 
     // 打印配置信息
     this.logger.info("Metadata generation config:", metadataConfig);
-    
+
     // 调用AI服务生成元数据
     let metadataResult = await generateContent(metadataConfig);
     this.logger.info("Metadata generation successful", {
@@ -168,7 +261,9 @@ export class ContentGeneratorService {
             // 移除开头的 ```json\n 和结尾的 ```
             let cleanedJson = metadataResult;
             if (cleanedJson.includes("```")) {
-              this.logger.info("Attempting to clean Markdown code block markers");
+              this.logger.info(
+                "Attempting to clean Markdown code block markers"
+              );
               // 移除开始的 ```json 或其他代码块标记
               cleanedJson = cleanedJson.replace(/```[a-z]*\n/g, "");
               // 移除结束的 ```
@@ -189,11 +284,17 @@ export class ContentGeneratorService {
             });
 
             // 如果解析失败，创建一个基本的元数据对象
-            metadataResult = this.createFallbackMetadata(primaryKeyword, keywords);
+            metadataResult = this.createFallbackMetadata(
+              primaryKeyword,
+              keywords
+            );
           }
         } else {
           // 如果解析失败，创建一个基本的元数据对象
-          metadataResult = this.createFallbackMetadata(primaryKeyword, keywords);
+          metadataResult = this.createFallbackMetadata(
+            primaryKeyword,
+            keywords
+          );
         }
       }
     }
@@ -241,7 +342,7 @@ export class ContentGeneratorService {
 
     // 打印内容生成配置信息
     this.logger.info("Content generation config:", contentConfig);
-    
+
     // 调用AI服务生成内容
     let contentResult = await generateContent(contentConfig);
     this.logger.info("Content generation successful");
@@ -279,10 +380,7 @@ export class ContentGeneratorService {
         // 处理开头的代码块标记 (```html, ```javascript 等)
         articleContent = articleContent.replace(/```[a-z]*\n/g, "");
         articleContent = articleContent.replace(/\n\s*```\s*/g, "");
-        articleContent = articleContent.replace(
-          /```[a-z]*\s(.*?)\s```/g,
-          "$1"
-        );
+        articleContent = articleContent.replace(/```[a-z]*\s(.*?)\s```/g, "$1");
         articleContent = articleContent.replace(/```/g, "");
       }
 
@@ -314,7 +412,9 @@ export class ContentGeneratorService {
       }
     } else {
       // 无法获取内容，使用备用内容
-      this.logger.warn("Could not extract content from response, using fallback");
+      this.logger.warn(
+        "Could not extract content from response, using fallback"
+      );
       articleContent = `
         <h1>${primaryKeyword}</h1>
         <p>This is an article about ${primaryKeyword}.</p>
@@ -331,7 +431,10 @@ export class ContentGeneratorService {
    * @param primaryKeyword 主关键词
    * @returns 替换后的文本
    */
-  private replaceKeywordPlaceholders(text: string | undefined, primaryKeyword: string): string {
+  private replaceKeywordPlaceholders(
+    text: string | undefined,
+    primaryKeyword: string
+  ): string {
     if (!text) return "";
     text = text ? text.toString() : "";
     // 检查是否包含${primaryKeyword}占位符
@@ -347,7 +450,10 @@ export class ContentGeneratorService {
    * @param keywords 关键词数组
    * @returns 备用元数据
    */
-  private createFallbackMetadata(primaryKeyword: string, keywords: string[]): any {
+  private createFallbackMetadata(
+    primaryKeyword: string,
+    keywords: string[]
+  ): any {
     return {
       title: `Ultimate Guide to ${primaryKeyword}`,
       slug: primaryKeyword.toLowerCase().replace(/\s+/g, "-"),
@@ -365,9 +471,15 @@ export class ContentGeneratorService {
    * @param keywords 关键词数组
    * @returns 备用内容
    */
-  private createFallbackContent(primaryKeyword: string, keywords: string[]): GeneratedContent {
-    const fallbackMetadata = this.createFallbackMetadata(primaryKeyword, keywords);
-    
+  private createFallbackContent(
+    primaryKeyword: string,
+    keywords: string[]
+  ): GeneratedContent {
+    const fallbackMetadata = this.createFallbackMetadata(
+      primaryKeyword,
+      keywords
+    );
+
     return {
       ...fallbackMetadata,
       content: `

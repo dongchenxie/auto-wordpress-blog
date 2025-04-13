@@ -200,7 +200,7 @@ async function processTaxonomies(
   fallbackKeywords?: string[]
 ): Promise<{ categoryIds: number[]; tagIds: number[] }> {
   // 处理分类
-  const categoryNames = categories || ["Fishing"];
+  const categoryNames = categories || [""];
 
   // 处理标签
   let tagNames = tags || fallbackKeywords || [];
