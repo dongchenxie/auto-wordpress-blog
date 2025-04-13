@@ -11,50 +11,41 @@ export class ContentGeneratorService {
   private logger = createLogger("content-generator");
 
   /**
-   * 获取WordPress网站的分类和标签数据
+   * 获取WordPress网站的分类数据
    * @param url WordPress网站URL
    * @param auth 认证信息
-   * @returns 包含分类和标签的对象
+   * @returns 分类名称数组
    */
-  private async fetchWordPressTaxonomies(
+  private async fetchCategories(
     url: string,
     auth: { username: string; password: string }
-  ): Promise<{ categories: string[]; tags: string[] }> {
-    this.logger.info("Fetching WordPress taxonomies");
+  ): Promise<string[]> {
+    this.logger.info("Fetching WordPress categories");
 
     try {
       // 创建WordPress API服务实例
       const wordpressService = new WordPressApiService(url, auth);
 
-      // 临时存储分类和标签数据的对象
+      // 临时存储分类数据的对象
       const categoriesMap: Record<string, number> = {};
-      const tagsMap: Record<string, number> = {};
 
-      // 获取所有分类和标签
+      // 获取所有分类
       await wordpressService.fetchAllTaxonomies("categories", categoriesMap);
-      await wordpressService.fetchAllTaxonomies("tags", tagsMap);
 
-      // 提取分类和标签名称
-      const categories = Object.keys(categoriesMap).filter(
-        (name) => name.length > 0 && !name.includes("_")
+      // 从categoriesMap中提取分类名称
+      const categoryNames = Object.keys(categoriesMap)
+        .filter((name) => name.length > 0 && !name.match(/^\d+$/))
+        .slice(0, 50); // 限制数量，避免prompt过长
+
+      this.logger.info(
+        `Fetched ${categoryNames.length} categories from WordPress`
       );
-      const tags = Object.keys(tagsMap).filter(
-        (name) => name.length > 0 && !name.includes("_")
-      );
-
-      this.logger.info("WordPress taxonomies fetched", {
-        categoriesCount: categories.length,
-        tagsCount: tags.length,
-      });
-
-      return { categories, tags };
+      return categoryNames;
     } catch (error) {
-      this.logger.error("Error fetching WordPress taxonomies", {
+      this.logger.error("Error fetching WordPress categories", {
         error: error instanceof Error ? error.message : String(error),
       });
-
-      // 返回空数组作为备用
-      return { categories: [], tags: [] };
+      return [];
     }
   }
 
@@ -105,9 +96,8 @@ export class ContentGeneratorService {
     };
 
     try {
-      // 0. 获取WordPress网站的分类和标签数据
-      const { categories: existingCategories, tags: existingTags } =
-        await this.fetchWordPressTaxonomies(url, auth);
+      // 0. 获取WordPress网站的分类数据
+      const siteCategories = await this.fetchCategories(url, auth);
 
       // 1. 生成元数据
       const metadataResult = await this.generateMetadata(
@@ -121,8 +111,7 @@ export class ContentGeneratorService {
         metaTemperature,
         metaMax_tokens,
         metadataSchema,
-        existingCategories,
-        existingTags
+        siteCategories
       );
 
       // 在两个API调用之间添加延迟，避免触发速率限制
@@ -175,48 +164,24 @@ export class ContentGeneratorService {
     temperature?: number,
     max_tokens?: number,
     jsonSchema?: Record<string, any>,
-    existingCategories?: string[],
-    existingTags?: string[]
+    siteCategories?: string[]
   ): Promise<any> {
     // 替换关键词占位符
-    // 准备现有分类和标签数据的字符串表示
-    let existingCategoriesStr = "";
-    let existingTagsStr = "";
-
-    if (existingCategories && existingCategories.length > 0) {
-      // 最多使用前20个分类，避免提示过长
-      const limitedCategories = existingCategories.slice(0, 20);
-      existingCategoriesStr = `\nExisting blog categories: ${limitedCategories.join(
-        ", "
-      )}.`;
-    }
-
-    if (existingTags && existingTags.length > 0) {
-      // 最多使用前50个标签，避免提示过长
-      const limitedTags = existingTags.slice(0, 50);
-      existingTagsStr = `\nExisting blog tags: ${limitedTags.join(", ")}.`;
-    }
-
-    // 基础提示
-    let basePrompt = userPrompt
-      ? userPrompt
-      : `I have a fishing online wordpress store,url is https://fishingfusion.com/主要是是做fishing产品以及各类相关产品. Remember in this conversation, my store potienal customers are english speakers,Be written in high-quality English, suitable for both enthusiasts and professionals.Think and write one comprehensive, detailed, and academically rigorous blog post topic and outline with main keyword ${primaryKeyword}, and other keywords with high search volume and many people willing to know about it.After the main content, please provide: an SEO blog title with power words containing a number,Blog categories,SEO slug,SEO-optimized tags (comma-separated) ,3 precise image_search_keywords for image API (be short and specific) and A compelling excerpt Focus keywords (comma-separated).use Focus Keyword in the SEO Title,Focus Keyword used inside SEO Meta Description,Focus Keyword used in the URL.`;
-
-    // 如果有现有分类和标签，添加到提示中
-    if (existingCategoriesStr || existingTagsStr) {
-      basePrompt += `\n\nPlease use the following existing categories and tags when possible:${existingCategoriesStr}${existingTagsStr}\nYou can also suggest new categories and tags if needed, but prefer using existing ones when relevant.`;
-    }
-
-    // 替换关键词占位符
-    const metadataUserPrompt = this.replaceKeywordPlaceholders(
-      basePrompt,
+    let metadataUserPrompt = this.replaceKeywordPlaceholders(
+      userPrompt ? userPrompt : ``,
       primaryKeyword
     );
 
-    this.logger.info("Metadata generation prompt with taxonomies", {
-      promptLength: metadataUserPrompt.length,
-      hasTaxonomies: !!(existingCategoriesStr || existingTagsStr),
-    });
+    // 如果有网站分类数据，添加到用户提示中
+    if (siteCategories && siteCategories.length > 0) {
+      const categoriesPrompt = `\n\nPlease select the most appropriate categories for this article from the following existing website categories:\n${siteCategories.join(
+        ", "
+      )}\n\nOnly use categories from this list in your response.`;
+      metadataUserPrompt += categoriesPrompt;
+      this.logger.info("Added site categories to metadata prompt", {
+        categoriesCount: siteCategories.length,
+      });
+    }
 
     const metadataSystemPrompt = this.replaceKeywordPlaceholders(
       systemPrompt,
@@ -458,7 +423,7 @@ export class ContentGeneratorService {
       title: `Ultimate Guide to ${primaryKeyword}`,
       slug: primaryKeyword.toLowerCase().replace(/\s+/g, "-"),
       excerpt: `Discover everything you need to know about ${primaryKeyword} in this comprehensive guide.`,
-      categories: ["Fishing"],
+      categories: [""],
       tags: keywords,
       focus_keywords: keywords,
       image_keywords: [primaryKeyword],
@@ -485,7 +450,7 @@ export class ContentGeneratorService {
       content: `
 <h1>${fallbackMetadata.title}</h1>
 
-<p>This article provides detailed information about ${primaryKeyword}. If you're interested in fishing equipment, this guide will help you make informed decisions.</p>
+<p>This article provides detailed information about ${primaryKeyword}.</p>
 
 <h2>Key Points About ${primaryKeyword}</h2>
 <ul>
